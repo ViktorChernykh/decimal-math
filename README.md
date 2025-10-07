@@ -18,6 +18,7 @@
 - **Formatting:** High-performance ASCII output for reporting
 - **VWAP, notional, and price-adjustment helpers**
 - **Swift Concurrency, Sendable and Hashable ready**
+- **JSON encoding/decoding:** Seamless integration with `Codable` — `Decimals` can decode from `Double` and encode back to `Double` for compact JSON representation
 
 ---
 
@@ -29,3 +30,4 @@ In Xcode or in your `Package.swift`:
 
 ```swift
 .package(url: "https://github.com/your-org/decimal-math.git", from: "0.1.0"),
+```

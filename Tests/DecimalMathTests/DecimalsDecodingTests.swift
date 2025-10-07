@@ -28,7 +28,7 @@ struct DecimalsDecodingTests {
 
 	// MARK: - Tests
 
-	/// JSON number → Decimal-путь. Ожидаем корректный scale и units.
+	/// JSON number → Decimal is the path. We expect the correct scale and units.
 	@Test
 	func decode_Number_SimpleFraction() throws {
 		// 5.12 → scale = 2, units = 512
@@ -37,7 +37,7 @@ struct DecimalsDecodingTests {
 		#expect(value.units == 512, "Units for 5.12 must be 512")
 	}
 
-	/// JSON number → целое без дроби.
+	/// JSON number → integer without fraction.
 	@Test
 	func decode_Number_Integer() throws {
 		let value: Decimals = try decode("100")
@@ -45,7 +45,7 @@ struct DecimalsDecodingTests {
 		#expect(value.units == 100)
 	}
 
-	/// JSON number → отрицательное дробное.
+	/// JSON number → negative fractional.
 	@Test
 	func decode_Number_NegativeFraction() throws {
 		let value: Decimals = try decode("-0.01")
@@ -53,7 +53,7 @@ struct DecimalsDecodingTests {
 		#expect(value.units == -1)
 	}
 
-	/// JSON string отрицательное с научной нотацией.
+	/// JSON string is negative with scientific notation.
 	@Test
 	func decode_String_Scientific_Negative() throws {
 		// "-4.5e+2" = -450 → scale 0, units -450
@@ -62,35 +62,35 @@ struct DecimalsDecodingTests {
 		#expect(value.units == -450, "Units for -450 with scale 0 must be -450")
 	}
 
-	/// Невалидная строка → должна упасть с dataCorruptedError.
+	/// Invalid row → must fall with dataCorruptedError.
 	@Test
 	func decode_String_Invalid_Fails() {
 		let error: String = decodeError(#""not-a-number""#)
 		#expect(error == "error")
 	}
 
-	/// Проверка устойчивости к локали: запятая не принимается в строковом пути.
+	/// Locale tolerance check: The comma is not accepted in the string path.
 	@Test
 	func decode_String_Comma_Fails() {
 		let error: String = decodeError(#""5,12""#)
 		#expect(error == "error")
 	}
 
-	/// Узкий corner-case: строка с точкой и без дробной части — scale должен быть 0.
+	/// Narrow corner-case: a line with a dot and without a fractional part — the scale must be 0.
 	@Test
 	func decode_String_TrailingDot() {
 		let error: String = decodeError("42.")
 		#expect(error == "error")
 	}
 
-	/// Узкий corner-case: ".5" — корректно как 0.5.
+	/// Narrow corner-case: ".5" is correct as 0.5.
 	@Test
 	func decode_String_LeadingDot() {
 		let error: String = decodeError(".5")
 		#expect(error == "error")
 	}
 
-	/// JSON number в научной нотации. JSONDecoder→Decimal обычно понимает это напрямую.
+	/// JSON number in scientific notation. JSONDecoder→Decimal usually understands this directly.
 	@Test
 	func decode_Number_Scientific() throws {
 		// 1e-6 → 0.000001 → scale 6, units 1
@@ -99,7 +99,7 @@ struct DecimalsDecodingTests {
 		#expect(value.units == 1)
 	}
 
-	/// Гарантия: top-level массив из строк/чисел тоже работает.
+	/// Guarantee: A top-level array of strings/numbers also works.
 	@Test
 	func decode_Array_Mixed() throws {
 		let data: Data = Data("[5.120, 5.12, 1e2, -3]".utf8)
