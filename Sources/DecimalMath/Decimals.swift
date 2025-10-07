@@ -100,6 +100,17 @@ public struct Decimals: Codable, Sendable, Hashable {
 		throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected decimal number")
 	}
 
+	/// Encodes `Decimals` as a JSON number using its `double` value.
+	///
+	/// We intentionally use a single-value container so that JSON output is a plain
+	/// number (e.g., `123.45`) rather than an object. Precision is bounded by
+	/// the `Double` IEEE-754 representation and the current `scale`.
+	@inline(__always)
+	public func encode(to encoder: any Encoder) throws {
+		var container: any SingleValueEncodingContainer = encoder.singleValueContainer()
+		try container.encode(Double(units) / Double(Int.p10[scale]))
+	}
+
 	/// Changes the scale by multiplying or dividing the underlying `units` by 10^Δ.
 	///
 	/// - Parameter newScale: Target scale. If larger than current, multiplies; if smaller, divides with banker's rounding.
