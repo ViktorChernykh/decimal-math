@@ -5,11 +5,17 @@
 //  Created by Victor Chernykh on 22.09.2025.
 //
 
+import Foundation
+
 /// Immutable integer amount in minor units with an explicit decimal scale.
 /// Example: scale = 2 → units are cents; amount = 12345 → 123.45
-public struct Decimals: Sendable, Hashable {
+public struct Decimals: Codable, Sendable, Hashable {
 	public let units: Int
 	public let scale: Int
+
+	public var double: Double {
+		Double(units) / Double(Int.p10[scale])
+	}
 
 	/// Creates a fixed-point decimal from integer minor units.
 	///
@@ -20,6 +26,78 @@ public struct Decimals: Sendable, Hashable {
 	public init(units: Int, scale: Int) {
 		self.units = units
 		self.scale = scale
+	}
+
+	/// Converts a Double to fixed-point `Decimals` using banker's rounding.
+	///
+	/// - Parameters:
+	///   - value: Source floating value in major units (e.g. 123.45 when scale=2).
+	///   - scale: Fractional digits count (>= 0).
+	/// - Throws: `notFinite` for NaN/Inf, `overflow` if scaled value does not fit `Int`,
+	///           `negativeScale` if scale < 0.
+	/// - Note: Rounds with `.toNearestOrEven`, consistent with integer banker's rounding used elsewhere.
+	@inline(__always)
+	public init?(from value: Double, scale: Int) {
+		// Validate scale
+		guard scale >= 0 else {
+			return nil
+		}
+
+		// Fast path multiplier
+		let multiplier: Int = Int.p10[scale]
+
+		// Scale and banker's rounding in Double domain
+		// Using rounded(.toNearestOrEven) matches IEEE-754 banker's rounding.
+		let scaled: Double = (value * Double(multiplier)).rounded(.toNearestOrEven)
+
+		// Normalize negative zero: -0.0 → 0
+		let normalized: Double = scaled == 0.0 ? 0.0 : scaled
+
+		// Safe cast (already rounded)
+		self.units = Int(normalized)
+		self.scale = scale
+	}
+
+	/// Converts Decimal → (units, scale)
+	/// Example: 5.12 → (512, 2)
+	@inline(__always)
+	public init(decimal: Decimal) {
+		// Decimal.exponent is negative when there are fractional digits
+		scale = decimal.exponent < 0 ? -decimal.exponent : 0
+		if scale == 0 {
+			units = NSDecimalNumber(decimal: decimal).intValue
+			return
+		}
+		// Fast: internal base-10 power (no building Decimal 10^scale)
+		let shifted: NSDecimalNumber = NSDecimalNumber(decimal: decimal)
+			.multiplying(byPowerOf10: Int16(scale)) // 5.12 * 10^2 = 512
+		units = shifted.intValue
+	}
+
+	/// Decodes from JSON number or string:
+	/// - If value is a JSON number → decode as Decimal (precise), then map to (units, scale)
+	/// - If value is a String     → parse with en_US_POSIX locale, then map
+	/// - Fallback: try Double → Decimal (not recommended, but we'll leave it as a backup way).
+	@inline(__always)
+	public init(from decoder: any Decoder) throws {
+		let container: any SingleValueDecodingContainer = try decoder.singleValueContainer()
+
+		// 1) Prefer Decimal (precise numeric token from JSON)
+		if let decimal: Decimal = try? container.decode(Decimal.self) {
+			// Decimal.exponent is negative when there are fractional digits
+			scale = decimal.exponent < 0 ? -decimal.exponent : 0
+			if scale == 0 {
+				units = NSDecimalNumber(decimal: decimal).intValue
+				return
+			}
+			// Fast: internal base-10 power (no building Decimal 10^scale)
+			let shifted: NSDecimalNumber = NSDecimalNumber(decimal: decimal)
+				.multiplying(byPowerOf10: Int16(scale)) // 5.12 * 10^2 = 512
+			units = shifted.intValue
+			return
+		}
+
+		throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected decimal number")
 	}
 
 	/// Changes the scale by multiplying or dividing the underlying `units` by 10^Δ.

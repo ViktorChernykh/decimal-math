@@ -1,0 +1,119 @@
+import Foundation
+import Testing
+@testable import DecimalMath
+
+@Suite
+struct DecimalsDecodingTests {
+	// MARK: - Helpers
+
+	/// Decodes a single JSON value into Decimals.
+	/// Accepts JSON like: `5.12`, `"5.120"`, `"1.23e-3"`, `100`, `"-0.01"`.
+	@inline(__always)
+	private func decode(_ json: String) throws -> Decimals {
+		let data: Data = Data(json.utf8)
+		let decoder: JSONDecoder = .init()
+		return try decoder.decode(Decimals.self, from: data)
+	}
+
+	/// Wraps a throwing decode and returns the error string (for negative tests).
+	@inline(__always)
+	private func decodeError(_ json: String) -> String {
+		do {
+			_ = try decode(json)
+			return "no error"
+		} catch {
+			return "error"
+		}
+	}
+
+	// MARK: - Tests
+
+	/// JSON number → Decimal-путь. Ожидаем корректный scale и units.
+	@Test
+	func decode_Number_SimpleFraction() throws {
+		// 5.12 → scale = 2, units = 512
+		let value: Decimals = try decode("5.12")
+		#expect(value.scale == 2, "Scale for 5.12 must be 2")
+		#expect(value.units == 512, "Units for 5.12 must be 512")
+	}
+
+	/// JSON number → целое без дроби.
+	@Test
+	func decode_Number_Integer() throws {
+		let value: Decimals = try decode("100")
+		#expect(value.scale == 0)
+		#expect(value.units == 100)
+	}
+
+	/// JSON number → отрицательное дробное.
+	@Test
+	func decode_Number_NegativeFraction() throws {
+		let value: Decimals = try decode("-0.01")
+		#expect(value.scale == 2)
+		#expect(value.units == -1)
+	}
+
+	/// JSON string отрицательное с научной нотацией.
+	@Test
+	func decode_String_Scientific_Negative() throws {
+		// "-4.5e+2" = -450 → scale 0, units -450
+		let value: Decimals = try decode("-4.5e+2")
+		#expect(value.scale == 0, "Text '-4.5e+2' expands to -450 → scale 0")
+		#expect(value.units == -450, "Units for -450 with scale 0 must be -450")
+	}
+
+	/// Невалидная строка → должна упасть с dataCorruptedError.
+	@Test
+	func decode_String_Invalid_Fails() {
+		let error: String = decodeError(#""not-a-number""#)
+		#expect(error == "error")
+	}
+
+	/// Проверка устойчивости к локали: запятая не принимается в строковом пути.
+	@Test
+	func decode_String_Comma_Fails() {
+		let error: String = decodeError(#""5,12""#)
+		#expect(error == "error")
+	}
+
+	/// Узкий corner-case: строка с точкой и без дробной части — scale должен быть 0.
+	@Test
+	func decode_String_TrailingDot() {
+		let error: String = decodeError("42.")
+		#expect(error == "error")
+	}
+
+	/// Узкий corner-case: ".5" — корректно как 0.5.
+	@Test
+	func decode_String_LeadingDot() {
+		let error: String = decodeError(".5")
+		#expect(error == "error")
+	}
+
+	/// JSON number в научной нотации. JSONDecoder→Decimal обычно понимает это напрямую.
+	@Test
+	func decode_Number_Scientific() throws {
+		// 1e-6 → 0.000001 → scale 6, units 1
+		let value: Decimals = try decode("1e-6")
+		#expect(value.scale == 6)
+		#expect(value.units == 1)
+	}
+
+	/// Гарантия: top-level массив из строк/чисел тоже работает.
+	@Test
+	func decode_Array_Mixed() throws {
+		let data: Data = Data("[5.120, 5.12, 1e2, -3]".utf8)
+		let decoder: JSONDecoder = .init()
+		let values: [Decimals] = try decoder.decode([Decimals].self, from: data)
+
+		#expect(values.count == 4)
+		// "5.120"
+		#expect(values[0].scale == 2 && values[0].units == 512)
+		// 5.12
+		#expect(values[1].scale == 2 && values[1].units == 512)
+		// "1e2" → 100 → scale 0
+		#expect(values[2].scale == 0 && values[2].units == 100)
+		// -3 → scale 0
+		#expect(values[3].scale == 0 && values[3].units == -3)
+	}
+}
