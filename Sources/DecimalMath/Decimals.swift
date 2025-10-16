@@ -28,6 +28,16 @@ public struct Decimals: Codable, Sendable, Hashable {
 		self.scale = scale
 	}
 
+	@inline(__always)
+	public init?(from string: String) {
+		if let parsed: (units: Int, scale: Int) = Decimals.parseStringToUnitsScale(string) {
+			units = parsed.units
+			scale = parsed.scale
+			return
+		}
+		return nil
+	}
+
 	/// Converts a Double to fixed-point `Decimals` using banker's rounding.
 	///
 	/// - Parameters:
@@ -95,6 +105,15 @@ public struct Decimals: Codable, Sendable, Hashable {
 				.multiplying(byPowerOf10: Int16(scale)) // 5.12 * 10^2 = 512
 			units = shifted.intValue
 			return
+			// 2) If JSON carries a string, parse it deterministically (ASCII-only)
+		} else if let raw: String = try? container.decode(String.self) {
+			let trimmed: String = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+
+			if let parsed: (units: Int, scale: Int) = Decimals.parseStringToUnitsScale(trimmed) {
+				self.units = parsed.units
+				self.scale = parsed.scale
+				return
+			}
 		}
 
 		throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected decimal number")
@@ -461,21 +480,21 @@ public struct Decimals: Codable, Sendable, Hashable {
 					f /= 10
 				}
 				// Decimal separator
-				write(UTF8(decChar: decimalSeparator))
+				write(Self.asciiCode(for: decimalSeparator))
 			}
 
 			// Write integer part with grouping
-			var n: Int = intPart
+			var number: Int = intPart
 			var written: Int = 0
 			repeat {
 				if written != 0, written % 3 == 0, let g = groupSeparator {
-					write(UTF8(decChar: g))
+					write(Self.asciiCode(for: g))
 				}
-				let digit: UInt8 = UInt8(n % 10)
+				let digit: UInt8 = UInt8(number % 10)
 				write(48 &+ digit)
-				n /= 10
+				number /= 10
 				written &+= 1
-			} while n > 0
+			} while number > 0
 
 			if isNegative {
 				write(45) // '-'
@@ -493,20 +512,90 @@ public struct Decimals: Codable, Sendable, Hashable {
 
 	/// ASCII code for a Character assumed to be single-scalar (like separators).
 	@inline(__always)
-	private func UTF8(decChar: Character) -> UInt8 {
-		String(decChar).utf8.first ?? 63 // '?'
+	private static func asciiCode(for character: Character) -> UInt8 {
+		String(character).utf8.first ?? 63 // '?'
 	}
 
 	/// Number of base-10 digits in a positive integer.
 	@inline(__always)
-	private static func digits(_ x: Int) -> Int {
-		var n: Int = x
-		var c: Int = 0
+	private static func digits(_ value: Int) -> Int {
+		var current: Int = value
+		var count: Int = 0
 
-		while n > 0 {
-			n /= 10
-			c &+= 1
+		while current > 0 {
+			current /= 10
+			count &+= 1
 		}
-		return max(1, c)
+		return max(1, count)
 	}
+
+	/// Parses ASCII decimal string into `(units, scale)` pair.
+	///
+	/// Accepted forms: optional sign ('+' or '-'), digits, optional single decimal separator '.' or ','.
+	/// Examples: "123", "-123.45", "+0,001". Grouping separators are NOT supported.
+	/// Returns `nil` on invalid input.
+	@inline(__always)
+	private static func parseStringToUnitsScale(_ value: String) -> (Int, Int)? {
+		if value.isEmpty {
+			return nil
+		}
+
+		var sign: Int = 1
+		var begin: Bool = true
+		var sawDigits: Bool = false
+		var sawSeparator: Bool = false
+		var units: Int = 0
+		var scale: Int = 0
+
+		// Leading/trailing spaces are trimmed by caller; internal spaces are invalid
+		for byte in value.utf8 {
+			switch byte {
+			case 43: // '+'
+				// Sign is only allowed at the very beginning, before any digit or separator
+				if !begin { return nil }
+				begin = false
+				continue
+			case 45: // '-'
+				if !begin { return nil }
+				begin = false
+				sign = -1
+				continue
+			case 44, 46: // ',' or '.' as decimal separator
+				// Must have at least one digit before the separator; only one separator allowed
+				if !sawDigits || sawSeparator { return nil }
+				sawSeparator = true
+				continue
+			default:
+				break
+			}
+
+			// digits '0'...'9'
+			if byte >= 48 && byte <= 57 {
+				let digit: Int = Int(byte - 48)
+				units = 10 &* units &+ digit
+
+				if sawSeparator {
+					scale &+= 1
+				}
+				sawDigits = true
+				begin = false
+			} else {
+				// Any other ASCII is invalid (including spaces inside number)
+				return nil
+			}
+		}
+
+		// Must have at least one digit overall
+		if !sawDigits {
+			return nil
+		}
+		// If separator was present, must have at least one fractional digit
+		if sawSeparator && scale == 0 {
+			return nil
+		}
+
+		units = sign > 0 ? units : -units
+		return (units, scale)
+	}
+
 }

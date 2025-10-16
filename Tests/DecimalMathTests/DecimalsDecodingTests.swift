@@ -69,13 +69,6 @@ struct DecimalsDecodingTests {
 		#expect(error == "error")
 	}
 
-	/// Locale tolerance check: The comma is not accepted in the string path.
-	@Test
-	func decode_String_Comma_Fails() {
-		let error: String = decodeError(#""5,12""#)
-		#expect(error == "error")
-	}
-
 	/// Narrow corner-case: a line with a dot and without a fractional part — the scale must be 0.
 	@Test
 	func decode_String_TrailingDot() {
@@ -115,5 +108,41 @@ struct DecimalsDecodingTests {
 		#expect(values[2].scale == 0 && values[2].units == 100)
 		// -3 → scale 0
 		#expect(values[3].scale == 0 && values[3].units == -3)
+	}
+
+	/// Decoding from a JSON **string** must go through the string path of `init(from:)`.
+	@Test("Decode from JSON string")
+	func testDecodeFromJsonString() throws {
+		let jsonString: String = "\"-12.3400\"" // a JSON string token
+		let data: Data = Data(jsonString.utf8)
+		let decoder: JSONDecoder = .init()
+		let value: Decimals = try decoder.decode(Decimals.self, from: data)
+		#expect(value.units == -123400, "Units should be -123400")
+		#expect(value.scale == 4, "Scale should be 4 (preserve fractional zeros)")
+	}
+
+	@Test("Decode from invalid1 JSON string")
+	func testDecodeFromInvalid1JsonString() throws {
+		let jsonString: String = "\"12.34.00\"" // a JSON string token
+		let error: String = decodeError(jsonString)
+		#expect(error == "error")
+	}
+
+	@Test("Decode from invalid2 JSON string")
+	func testDecodeFromInvalid2JsonString() throws {
+		let jsonString: String = "\".3400\"" // a JSON string token
+		let error: String = decodeError(jsonString)
+		#expect(error == "error")
+	}
+
+	/// Decoding from a JSON **number** must use the precise Decimal path.
+	@Test("Decode from JSON number")
+	func testDecodeFromJsonNumber() throws {
+		let jsonNumber: String = "12.34" // a JSON number token
+		let data: Data = Data(jsonNumber.utf8)
+		let decoder: JSONDecoder = .init()
+		let value: Decimals = try decoder.decode(Decimals.self, from: data)
+		#expect(value.units == 1234, "Units should be 1234")
+		#expect(value.scale == 2, "Scale should be 2")
 	}
 }

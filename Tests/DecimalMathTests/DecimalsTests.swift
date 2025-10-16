@@ -172,4 +172,45 @@ struct DecimalsTests {
 			#expect(rr == 12)
 		}
 	}
+	/// Tests for `Decimals.parseStringToUnitsScale(_:)` via public initializer `init?(from:)`.
+	@Test("Parse valid ASCII numeric strings ('.' and ',')")
+	func testParseValidAsciiStrings() throws {
+		let cases: [(source: String, expUnits: Int, expScale: Int)] = [
+			("0", 0, 0),
+			("-0", 0, 0),
+			("+123", 123, 0),
+			("12.34", 1234, 2),
+			("12,34", 1234, 2),
+			("-0,001", -1, 3),
+			("00123.0450", 1230450, 4)
+		]
+
+		for item in cases {
+			let value: Decimals? = .init(from: item.source)
+			#expect(value != nil, "Should parse: \(item.source)")
+			#expect(value?.units == item.expUnits, "Units mismatch for \(item.source)")
+			#expect(value?.scale == item.expScale, "Scale mismatch for \(item.source)")
+		}
+	}
+
+	/// Ensures invalid strings are rejected (returning `nil`).
+	@Test("Reject invalid ASCII strings")
+	func testParseInvalidAsciiStrings() throws {
+		let invalid: [String] = [
+			"",
+			".",
+			",",
+			"+.5",
+			".5",
+			"123.",
+			"12..3",
+			"1 2",
+			"+",
+			"-"
+		]
+		for source in invalid {
+			let value: Decimals? = .init(from: source)
+			#expect(value == nil, "Should reject: \(source)")
+		}
+	}
 }
