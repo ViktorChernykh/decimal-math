@@ -92,7 +92,7 @@ public struct Decimals: Codable, Sendable, Hashable {
 	public init(from decoder: any Decoder) throws {
 		let container: any SingleValueDecodingContainer = try decoder.singleValueContainer()
 
-		// 1) Prefer Decimal (precise numeric token from JSON)
+		// Double or Decimal
 		if let decimal: Decimal = try? container.decode(Decimal.self) {
 			// Decimal.exponent is negative when there are fractional digits
 			scale = decimal.exponent < 0 ? -decimal.exponent : 0
@@ -105,8 +105,21 @@ public struct Decimals: Codable, Sendable, Hashable {
 				.multiplying(byPowerOf10: Int16(scale)) // 5.12 * 10^2 = 512
 			units = shifted.intValue
 			return
-			// 2) If JSON carries a string, parse it deterministically (ASCII-only)
-		} else if let raw: String = try? container.decode(String.self) {
+		} else
+
+		// google.type.Decimal
+		if let dec: GoogleDecimal = try? container.decode(GoogleDecimal.self) {
+			let trimmed: String = dec.value.trimmingCharacters(in: .whitespacesAndNewlines)
+
+			if let parsed: (units: Int, scale: Int) = Decimals.parseStringToUnitsScale(trimmed) {
+				self.units = parsed.units
+				self.scale = parsed.scale
+				return
+			}
+		} else
+
+		// String, parse it deterministically (ASCII-only)
+		if let raw: String = try? container.decode(String.self) {
 			let trimmed: String = raw.trimmingCharacters(in: .whitespacesAndNewlines)
 
 			if let parsed: (units: Int, scale: Int) = Decimals.parseStringToUnitsScale(trimmed) {
@@ -115,7 +128,6 @@ public struct Decimals: Codable, Sendable, Hashable {
 				return
 			}
 		}
-
 		throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected decimal number")
 	}
 
@@ -597,5 +609,15 @@ public struct Decimals: Codable, Sendable, Hashable {
 		units = sign > 0 ? units : -units
 		return (units, scale)
 	}
+}
 
+/// `google.type.Decimal` representation as used by Google APIs.
+/// Holds a base-10 decimal value as a string without exponent or special values.
+struct GoogleDecimal: Codable, Sendable {
+	/// Decimal value represented as a string.
+	let value: String
+
+	init(value: String) {
+		self.value = value
+	}
 }
