@@ -137,4 +137,81 @@ struct GoogleDecimalDecodingTests {
 			}
 		}
 	}
+
+	@Test("Exponent: positive exponent shifts decimal point right")
+	func testExponentPositive() throws {
+		// 1e3 = 1000
+		do {
+			let v: Decimals = try decodeAmount("1e3")
+			#expect(v.units == 1_000 && v.scale == 0)
+		}
+		// 1E3 = 1000
+		do {
+			let v: Decimals = try decodeAmount("1E3")
+			#expect(v.units == 1_000 && v.scale == 0)
+		}
+		// 1.23e2 = 123
+		do {
+			let v: Decimals = try decodeAmount("1.23e2")
+			#expect(v.units == 123 && v.scale == 0)
+		}
+		// 12.3e1 = 123
+		do {
+			let v: Decimals = try decodeAmount("12.3e1")
+			#expect(v.units == 123 && v.scale == 0)
+		}
+		// 1,5e2 = 150  (comma as decimal separator)
+		do {
+			let v: Decimals = try decodeAmount("1,5e2")
+			#expect(v.units == 150 && v.scale == 0)
+		}
+		// 12.3e5 = 1_230_000
+		do {
+			let v: Decimals = try decodeAmount("12.3e5")
+			#expect(v.units == 1_230_000 && v.scale == 0)
+		}
+	}
+
+	@Test("Exponent: negative exponent increases fractional digits")
+	func testExponentNegative() throws {
+		// 1e-3 = 0.001 → units=1, scale=3
+		do {
+			let v: Decimals = try decodeAmount("1e-3")
+			#expect(v.units == 1 && v.scale == 3)
+		}
+		// -7,5E-3 = -0.0075 → units=-75, scale=4
+		do {
+			let v: Decimals = try decodeAmount("-7,5E-3")
+			#expect(v.units == -75 && v.scale == 4)
+		}
+		// +42.0e-1 = 4.20 → units=420, scale=2
+		do {
+			let v: Decimals = try decodeAmount("+42.0e-1")
+			#expect(v.units == 420 && v.scale == 2)
+		}
+	}
+
+	@Test("Exponent: zero exponent leaves value unchanged")
+	func testExponentZero() throws {
+		do {
+			let v: Decimals = try decodeAmount("0e0")
+			#expect(v.units == 0 && v.scale == 0)
+		}
+		do {
+			let v: Decimals = try decodeAmount("123e0")
+			#expect(v.units == 123 && v.scale == 0)
+		}
+	}
+
+	@Test("Exponent: invalid forms must fail")
+	func testExponentInvalid() {
+		#expect(expectDecodeFailure("e10"))     // exponent without mantissa
+		#expect(expectDecodeFailure("1e"))      // missing digits after 'e'
+		#expect(expectDecodeFailure("1e+"))     // sign without digits
+		#expect(expectDecodeFailure("1e-"))     // sign without digits
+		#expect(expectDecodeFailure("1e 3"))    // internal space not allowed
+		#expect(expectDecodeFailure("1e1.0"))   // decimal point in exponent not allowed
+		#expect(expectDecodeFailure("1.2e+3.4"))// extra characters after exponent digits
+		#expect(expectDecodeFailure("1ee2"))    // double 'e'
+	}
 }

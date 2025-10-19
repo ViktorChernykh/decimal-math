@@ -543,8 +543,8 @@ public struct Decimals: Codable, Sendable, Hashable {
 
 	/// Parses ASCII decimal string into `(units, scale)` pair.
 	///
-	/// Accepted forms: optional sign ('+' or '-'), digits, optional single decimal separator '.' or ','.
-	/// Examples: "123", "-123.45", "+0,001". Grouping separators are NOT supported.
+	/// Accepted forms: optional sign ('+' or '-'), digits, optional single decimal separator '.' or ',', optional exponent 'e' or 'E'.
+	/// Examples: "123", "-123.45", "+0,001", "1.23e2", "-1.2E-3". Grouping separators are NOT supported.
 	/// Returns `nil` on invalid input.
 	@inline(__always)
 	private static func parseStringToUnitsScale(_ value: String) -> (Int, Int)? {
@@ -552,61 +552,146 @@ public struct Decimals: Codable, Sendable, Hashable {
 			return nil
 		}
 
+		// Mantissa state
 		var sign: Int = 1
 		var begin: Bool = true
 		var sawDigits: Bool = false
 		var sawSeparator: Bool = false
-		var units: Int = 0
+		var sawExponent: Bool = false
+		var unitsAbs: Int = 0
 		var scale: Int = 0
+
+		// Exponent state
+		var readingExponent: Bool = false
+		var expSign: Int = 1
+		var expValue: Int = 0
+		var sawExpDigit: Bool = false
 
 		// Leading/trailing spaces are trimmed by caller; internal spaces are invalid
 		for byte in value.utf8 {
 			switch byte {
 			case 43: // '+'
+				if readingExponent {
+					// '+' allowed only once, immediately after 'e' / 'E'
+					if sawExpDigit { return nil }
+					expSign = 1
+					continue
+				}
 				// Sign is only allowed at the very beginning, before any digit or separator
 				if !begin { return nil }
 				begin = false
 				continue
+
 			case 45: // '-'
+				if readingExponent {
+					// '-' allowed only once, immediately after 'e' / 'E'
+					if sawExpDigit { return nil }
+					expSign = -1
+					continue
+				}
 				if !begin { return nil }
 				begin = false
 				sign = -1
 				continue
+
 			case 44, 46: // ',' or '.' as decimal separator
+				if readingExponent {
+					// no decimal separator allowed in exponent
+					return nil
+				}
 				// Must have at least one digit before the separator; only one separator allowed
 				if !sawDigits || sawSeparator { return nil }
 				sawSeparator = true
 				continue
+
+			case 69, 101: // 'E' or 'e' → start exponent
+				if readingExponent {
+					// second 'e' not allowed
+					return nil
+				}
+				// Need mantissa digits before 'e'
+				if !sawDigits {
+					return nil
+				}
+				readingExponent = true
+				sawExponent = true
+				continue
+
 			default:
 				break
 			}
 
 			// digits '0'...'9'
 			if byte >= 48 && byte <= 57 {
-				let digit: Int = Int(byte - 48)
-				units = 10 &* units &+ digit
-
-				if sawSeparator {
-					scale &+= 1
+				let digit: Int = Int(byte &- 48)
+				if readingExponent {
+					sawExpDigit = true
+					// expValue = expValue * 10 + digit (bounded by Int)
+					let (tmp, of1) = expValue.multipliedReportingOverflow(by: 10)
+					if of1 { return nil }
+					let (tmp2, of2) = tmp.addingReportingOverflow(digit)
+					if of2 { return nil }
+					expValue = tmp2
+				} else {
+					// accumulate mantissa absolute units
+					unitsAbs = 10 &* unitsAbs &+ digit
+					if sawSeparator {
+						scale &+= 1
+					}
+					sawDigits = true
+					begin = false
 				}
-				sawDigits = true
-				begin = false
 			} else {
 				// Any other ASCII is invalid (including spaces inside number)
 				return nil
 			}
 		}
 
-		// Must have at least one digit overall
+		// Validate mantissa
 		if !sawDigits {
 			return nil
 		}
+
 		// If separator was present, must have at least one fractional digit
 		if sawSeparator && scale == 0 {
 			return nil
 		}
 
-		units = sign > 0 ? units : -units
+		// Validate exponent if present
+		if sawExponent && !sawExpDigit {
+			return nil
+		}
+
+		// Apply mantissa sign
+		var units: Int = sign > 0 ? unitsAbs : -unitsAbs
+
+		// Apply exponent: value = mantissa * 10^(expSign * expValue)
+		if sawExponent && expValue != 0 {
+			let exp: Int = expSign > 0 ? expValue : -expValue
+			if exp > 0 {
+				// shift decimal point to the right by 'exp'
+				if exp >= scale {
+					let shift: Int = exp - scale
+					let mul: Int = Int.pow10(scale: shift)
+					let (res, of) = units.multipliedReportingOverflow(by: mul)
+					if of { return nil }
+					units = res
+					scale = 0
+				} else {
+					scale &-= exp
+				}
+			} else {
+				// negative exponent: increase fractional digits
+				let increase: Int = -exp
+				// ensure target scale is representable
+				let newScale: Int = scale &+ increase
+				// Guard against out-of-range scales
+				if newScale < 0 { return nil }
+				scale = newScale
+				// units unchanged
+			}
+		}
+
 		return (units, scale)
 	}
 }
