@@ -10,6 +10,11 @@ import Foundation
 /// Immutable integer amount in minor units with an explicit decimal scale.
 /// Example: scale = 2 → units are cents; amount = 12345 → 123.45
 public struct Decimals: Codable, Sendable, Hashable {
+
+	public static let zero: Decimals = {
+		Decimals(units: 0, scale: 0)
+	}()
+
 	public let units: Int
 	public let scale: Int
 
@@ -23,7 +28,7 @@ public struct Decimals: Codable, Sendable, Hashable {
 	///   - units: Integer value in minor units (e.g., cents for `scale` = 2). Can be negative.
 	///   - scale: Number of fractional decimal digits; typical money scales are 0...3.
 	@inline(__always)
-	public init(units: Int, scale: Int) {
+	public init(units: Int = 0, scale: Int = 0) {
 		self.units = units
 		self.scale = scale
 	}
