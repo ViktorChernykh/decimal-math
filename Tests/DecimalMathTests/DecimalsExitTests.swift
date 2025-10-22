@@ -19,7 +19,7 @@ struct DecimalsExitTests {
 	func divide_zero_exits() async {
 		await #expect(processExitsWith: .failure) {
 			let value: Decimals = .init(units: 100, scale: 2)
-			_ = value.divide(0)
+			_ = value / 0
 		}
 	}
 

@@ -1,6 +1,7 @@
 @testable import DecimalMath
 import Testing
 
+@Suite("Binary operators on Decimals (banker's rounding, scale preservation, sign handling)")
 struct DecimalsTests {
 
 	// MARK: - rescaled(to:)
@@ -39,22 +40,7 @@ struct DecimalsTests {
 		#expect(t3.units == -12)
 	}
 
-	// MARK: - add / subtract / sum
-
-	@Test("add/subtract keep scale and compute exact integer result")
-	func add_subtract() {
-		let a: Decimals = .init(units: 12_300, scale: 2)
-		let b: Decimals = .init(units: -450, scale: 2)
-
-		let sum: Decimals = a.add(b)
-		let diff: Decimals = a.subtract(b)
-
-		#expect(sum.units == 11_850)
-		#expect(sum.scale == 2)
-
-		#expect(diff.units == 12_750)
-		#expect(diff.scale == 2)
-	}
+	// MARK: - sum
 
 	@Test("sum over sequence with uniform scale")
 	func sum_sequence() {
@@ -64,47 +50,9 @@ struct DecimalsTests {
 			.init(units: 3, scale: 0),
 		]
 		let s: Decimals = Decimals.sum(xs, scale: 0)
+
 		#expect(s.units == 6)
 		#expect(s.scale == 0)
-	}
-
-	// MARK: - multiply / divide
-
-	@Test("multiply by integer preserves scale")
-	func multiply_integer() {
-		let a: Decimals = .init(units: 12_345, scale: 2)
-		let r: Decimals = a.multiply(3)
-		#expect(r.units == 37_035)
-		#expect(r.scale == 2)
-	}
-
-	@Test("divide by integer uses banker's rounding")
-	func divide_bankers() {
-		// 1.25 / 2 = 0.625 → scale 2 banker’s → 0.62 (even)
-		let a: Decimals = .init(units: 125, scale: 2)
-		let half: Decimals = a.divide(2)
-		#expect(half.units == 62)
-
-		// Negative: -1.25 / 2 = -0.625 → 0.62 with sign
-		let b: Decimals = .init(units: -125, scale: 2)
-		let halfNeg: Decimals = b.divide(2)
-		#expect(halfNeg.units == -62)
-	}
-
-	// MARK: - multiply (ratio)
-
-	@Test("multiply by rational with banker's rounding")
-	func multiply_ratio() {
-		// 100.00 * (1/3) = 33.333... → 33.33 (banker's)
-		let a: Decimals = .init(units: 10_000, scale: 2)
-		let r: Decimals = a.multiply(1, over: 3)
-		#expect(r.units == 3_333)
-		#expect(r.scale == 2)
-
-		// 1.05 * 1/2 = 0.525 → 0.52 (banker’s)
-		let b: Decimals = .init(units: 105, scale: 2)
-		let r2: Decimals = b.multiply(1, over: 2)
-		#expect(r2.units == 52)
 	}
 
 	// MARK: - allocateProportionally / splitEvenly
@@ -114,6 +62,7 @@ struct DecimalsTests {
 		let total: Decimals = .init(units: 10, scale: 0)
 		let parts: [Decimals] = total.splitEvenly(parts: 3)
 		let unitsArray: [Int] = parts.map { $0.units }
+
 		#expect(unitsArray == [4, 3, 3])
 		#expect(Decimals.sum(parts, scale: 0).units == 10)
 	}
@@ -124,6 +73,7 @@ struct DecimalsTests {
 		// weights 1,2,3 → ideal shares 1.666.., 3.333.., 5.0 → floors 1,3,5 (already sums to 9) + 1 leftover → goes to largest remainder (index 0)
 		let parts: [Decimals] = total.allocateProportionally(weights: [1, 2, 3])
 		let unitsArray: [Int] = parts.map { $0.units }
+
 		#expect(unitsArray.reduce(0, +) == 10)
 		// Deterministic order: remainder(1/6) > remainder(0/6) etc. Expect [2,3,5]
 		#expect(unitsArray == [2, 3, 5])
@@ -212,5 +162,203 @@ struct DecimalsTests {
 			let value: Decimals? = .init(from: source)
 			#expect(value == nil, "Should reject: \(source)")
 		}
+	}
+
+	// MARK: Addition
+
+	/// Adding with same scale; no rounding.
+	@Test
+	func add_sameScale() {
+		let a: Decimals = Decimals(units: 123, scale: 2)	// 1.23
+		let b: Decimals = Decimals(units: 246, scale: 2)	// 2.46
+		let c: Decimals = a + b								// 3.69
+		#expect(c.units == 369)
+		#expect(c.scale == 2)
+	}
+
+	/// Adding with different scales; RHS downscales with banker's rounding to LHS scale.
+	@Test
+	func add_scaleMismatch_roundHalfToEven() {
+		let a: Decimals = Decimals(units: 100, scale: 2)   // 1.00 (lhs.scale = 2)
+
+		// 0.005 with scale=3 → to 2 decimals with banker's rounding = 0.00 (tie to even)
+		let b1: Decimals = Decimals(units: 5, scale: 3)
+		let r1: Decimals = a + b1
+		#expect(r1.units == 100)	// 1.00
+		#expect(r1.scale == 2)
+
+		// 0.015 with scale=3 → to 2 decimals with banker's = 0.02 (tie goes to even = .02)
+		let b2: Decimals = Decimals(units: 15, scale: 3)
+		let r2: Decimals = a + b2
+		#expect(r2.units == 102)	// 1.02
+		#expect(r2.scale == 2)
+	}
+
+	// MARK: Subtraction
+
+	@Test
+	func subtract_sameScale() {
+		let a: Decimals = Decimals(units: 500, scale: 2)	// 5.00
+		let b: Decimals = Decimals(units: 131, scale: 2)	// 1.31
+		let c: Decimals = a - b								// 3.69
+		#expect(c.units == 369)	// 3.69
+		#expect(c.scale == 2)
+	}
+
+	@Test
+	func subtract_scaleMismatch_roundHalfToEven() {
+		let a: Decimals = Decimals(units: 100, scale: 2)	// 1.00
+
+		// 0.005 → 0.00 (even), 1.00 - 0.00 = 1.00
+		let b1: Decimals = Decimals(units: 5, scale: 3)
+		let r1: Decimals = a - b1
+		#expect(r1.units == 100)
+		#expect(r1.scale == 2)
+
+		// 0.015 → 0.02 (even), 1.00 - 0.02 = 0.98
+		let b2: Decimals = Decimals(units: 15, scale: 3)
+		let r2: Decimals = a - b2
+		#expect(r2.units == 98)
+		#expect(r2.scale == 2)
+	}
+
+	// MARK: Multiplication (Decimals × Decimals)
+
+	@Test
+	func multiply_basic_noRounding() {
+		// 1.20 × 3.00 = 3.60, lhs.scale = 2 must be preserved
+		let a: Decimals = Decimals(units: 120, scale: 2)
+		let b: Decimals = Decimals(units: 300, scale: 2)
+		let c: Decimals = a * b
+		#expect(c.units == 360)
+		#expect(c.scale == 2)
+	}
+
+	@Test
+	func multiply_roundHalfToEven_downscale() {
+		// 1.25 × 0.50 = 0.625 → to 2 decimals: 0.62 (tie to even: .62 vs .63)
+		let a: Decimals = Decimals(units: 125, scale: 2)
+		let b: Decimals = Decimals(units: 50, scale: 2)
+		let r1: Decimals = a * b
+		#expect(r1.units == 62)
+		#expect(r1.scale == 2)
+
+		// 1.35 × 0.50 = 0.675 → to 2 decimals: 0.68 (tie to even)
+		let c: Decimals = Decimals(units: 135, scale: 2)
+		let r2: Decimals = c * b
+		#expect(r2.units == 68)
+		#expect(r2.scale == 2)
+	}
+
+	// MARK: Multiplication (× Int)
+
+	@Test
+	func multiply_byInt() {
+		let a: Decimals = Decimals(units: 123, scale: 2)	// 1.23
+		let r: Decimals = a * 3								// 3.69
+		#expect(r.units == 369)
+		#expect(r.scale == 2)
+	}
+
+	// MARK: Division (Decimals ÷ Decimals)
+
+	@Test
+	func divide_basic_roundHalfToEven() {
+		// 1.00 / 8.00 = 0.125 → to 2 decimals: 0.12 (tie to even)
+		let a: Decimals = Decimals(units: 100, scale: 2)
+		let b: Decimals = Decimals(units: 800, scale: 2)
+		let r1: Decimals = a / b
+		#expect(r1.units == 12)
+		#expect(r1.scale == 2)
+
+		// -1.00 / 8.00 = -0.125 → -0.12 (banker's rounding is symmetric)
+		let c: Decimals = Decimals(units: -100, scale: 2)
+		let r2: Decimals = c / b
+		#expect(r2.units == -12)
+		#expect(r2.scale == 2)
+	}
+
+	@Test
+	func divide_roundHalfToEven_various() {
+		// 1.00 / 6.00 = 0.1666… → 0.17
+		let a: Decimals = Decimals(units: 100, scale: 2)
+		let b: Decimals = Decimals(units: 600, scale: 2)
+		let r1: Decimals = a / b
+		#expect(r1.units == 17)
+		#expect(r1.scale == 2)
+
+		// 2.00 / 3.00 = 0.6666… → 0.67
+		let c: Decimals = Decimals(units: 200, scale: 2)
+		let d: Decimals = Decimals(units: 300, scale: 2)
+		let r2: Decimals = c / d
+		#expect(r2.units == 67)
+		#expect(r2.scale == 2)
+	}
+
+	// MARK: Division (÷ Int)
+
+	@Test
+	func divide_byInt_roundHalfToEven_positive() {
+		// 1.00 / 8 = 0.125 → 0.12
+		let a: Decimals = Decimals(units: 100, scale: 2)
+		let r: Decimals = a / 8
+		#expect(r.units == 12)
+		#expect(r.scale == 2)
+	}
+
+	@Test
+	func divide_byInt_roundHalfToEven_negativeDivisor() {
+		// 1.00 / -8 = -0.125 → -0.12
+		let a: Decimals = Decimals(units: 100, scale: 2)
+		let r: Decimals = a / -8
+		#expect(r.units == -12)
+		#expect(r.scale == 2)
+	}
+
+	@Test
+	func divide_byInt_roundHalfToEven_negativeDividend() {
+		// -1.00 / 8 = -0.125 → -0.12
+		let a: Decimals = Decimals(units: -100, scale: 2)
+		let r: Decimals = a / 8
+		#expect(r.units == -12)
+		#expect(r.scale == 2)
+	}
+
+	// MARK: Comparisons
+
+	@Test
+	func equality_scaleMismatch() {
+		// 1.200 == 1.20
+		let a: Decimals = Decimals(units: 1200, scale: 3)
+		let b: Decimals = Decimals(units: 120, scale: 2)
+		#expect(a == b)
+		#expect(!(a != b))
+	}
+
+	@Test
+	func ordering_scaleMismatch() {
+		// 1.199 < 1.20
+		let a: Decimals = Decimals(units: 1199, scale: 3)
+		let b: Decimals = Decimals(units: 120, scale: 2)
+		#expect(a < b)
+		#expect(b > a)
+
+		// 1.200 <= 1.20 and >=
+		let c: Decimals = Decimals(units: 1200, scale: 3)
+		#expect(c <= b)
+		#expect(c >= b)
+	}
+
+	@Test
+	func comparisons_withNegatives() {
+		let a: Decimals = Decimals(units: -100, scale: 2)  // -1.00
+		let b: Decimals = Decimals(units: 0, scale: 2)     //  0.00
+		let c: Decimals = Decimals(units: 50, scale: 2)    //  0.50
+
+		#expect(a < b)
+		#expect(b < c)
+		#expect(a < c)
+		#expect(!(a > b))
+		#expect(!(b > c))
 	}
 }

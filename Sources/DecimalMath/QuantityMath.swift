@@ -168,7 +168,7 @@ public enum QuantityMath {
 		var totalBaseUnits: Int = 0
 		for (q, p) in fills {
 			precondition(p.scale == targetScale, "Price scale mismatch in vwap")
-			totalNotional = totalNotional.add(notional(price: p, quantity: q))
+			totalNotional = totalNotional + notional(price: p, quantity: q)
 			let (s, of) = totalBaseUnits.addingReportingOverflow(q.units)
 			precondition(!of, "Overflow in vwap total quantity")
 			totalBaseUnits = s
@@ -264,9 +264,8 @@ public enum QuantityMath {
 
 		// qty = (budget * scaleFactor / effectivePrice)
 		//	.rescaled(to: quantityScale)
-		let tmp: Decimals = budget.multiply(scaleFactor)
-		var qty: Decimals = tmp.divide(effectivePrice)
-			.rescaled(to: quantityScale)
+		let tmp: Decimals = budget * scaleFactor
+		var qty: Decimals = (tmp / effectivePrice).rescaled(to: quantityScale)
 
 		if lot > 1 {
 			qty = roundToLot(qty, lotSize: lot, mode: .floor)
