@@ -1,4 +1,5 @@
 @testable import DecimalMath
+import Foundation
 import Testing
 
 @Suite("Binary operators on Decimals (banker's rounding, scale preservation, sign handling)")
@@ -360,5 +361,122 @@ struct DecimalsTests {
 		#expect(a < c)
 		#expect(!(a > b))
 		#expect(!(b > c))
+	}
+
+	// MARK: - Decimal
+
+	@Test
+	func testDecimalWithoutFractionScaleZeroPositive() {
+		let value: Decimals = .init(units: 12345, scale: 0)
+
+		let decimal: Decimal = value.decimal
+		let expected: Decimal = Decimal(12345)
+
+		#expect(decimal == expected)
+	}
+
+	@Test
+	func testDecimalWithoutFractionScaleZeroNegative() {
+		let value: Decimals = .init(units: -987, scale: 0)
+
+		let decimal: Decimal = value.decimal
+		let expected: Decimal = Decimal(-987)
+
+		#expect(decimal == expected)
+	}
+
+	@Test
+	func testDecimalSimplePositiveScaleTwo() {
+		let value: Decimals = .init(units: 12345, scale: 2)
+
+		let decimal: Decimal = value.decimal
+		let expected: Decimal = Decimal(string: "123.45")!
+
+		#expect(decimal == expected)
+	}
+
+	@Test
+	func testDecimalSimpleNegativeScaleTwo() {
+		let value: Decimals = .init(units: -12345, scale: 2)
+
+		let decimal: Decimal = value.decimal
+		let expected: Decimal = Decimal(string: "-123.45")!
+
+		#expect(decimal == expected)
+	}
+
+	@Test
+	func testDecimalWhenScaleEqualsDigitsCount() {
+		// 123 with scale 3 → 0.123
+		let value: Decimals = .init(units: 123, scale: 3)
+
+		let decimal: Decimal = value.decimal
+		let expected: Decimal = Decimal(string: "0.123")!
+
+		#expect(decimal == expected)
+	}
+
+	@Test
+	func testDecimalWhenScaleGreaterThanDigitsCount() {
+		// 5 with scale 2 → 0.05
+		let value: Decimals = .init(units: 5, scale: 2)
+
+		let decimal: Decimal = value.decimal
+		let expected: Decimal = Decimal(string: "0.05")!
+
+		#expect(decimal == expected)
+	}
+
+	@Test
+	func testDecimalWhenScaleMuchGreaterThanDigitsCount() {
+		// 5 with scale 4 → 0.0005
+		let value: Decimals = .init(units: 5, scale: 4)
+
+		let decimal: Decimal = value.decimal
+		let expected: Decimal = Decimal(string: "0.0005")!
+
+		#expect(decimal == expected)
+	}
+
+	@Test
+	func testDecimalZeroWithZeroScale() {
+		let value: Decimals = .init(units: 0, scale: 0)
+
+		let decimal: Decimal = value.decimal
+		let expected: Decimal = Decimal(0)
+
+		#expect(decimal == expected)
+	}
+
+	@Test
+	func testDecimalZeroWithPositiveScale() {
+		let value: Decimals = .init(units: 0, scale: 3)
+
+		let decimal: Decimal = value.decimal
+		let expected: Decimal = Decimal(string: "0.000")!
+
+		#expect(decimal == expected)
+	}
+
+	@Test
+	func testDecimalNegativeWithScaleGreaterThanDigitsCount() {
+		// -7 with scale 3 → -0.007
+		let value: Decimals = .init(units: -7, scale: 3)
+
+		let decimal: Decimal = value.decimal
+		let expected: Decimal = Decimal(string: "-0.007")!
+
+		#expect(decimal == expected)
+	}
+
+	@Test
+	func testDecimalLargerNumberWithFraction() {
+		// 123456789 with scale 4 → 12345.6789
+		let value: Decimals = .init(units: 123_456_789, scale: 4)
+
+		let decimal: Decimal = value.decimal
+		let expected: Decimal = Decimal(string: "12345.6789")!
+
+		#expect(decimal == expected)
 	}
 }

@@ -22,6 +22,37 @@ public struct Decimals: Codable, Sendable, Hashable {
 		Double(units) / Double(Int.p10[scale])
 	}
 
+	public var decimal: Decimal {
+		// No fractional part – просто целое
+		guard scale > 0 else {
+			return Decimal(units)
+		}
+
+		let isNegative: Bool = units < 0
+		let magnitude: Int = isNegative ? -units : units
+
+		// String only for the modulus of a number
+		var digits: String = String(magnitude)
+
+		// We guarantee that the length is >= scale + 1 so that the point can be inserted correctly.
+		if digits.count <= scale {
+			let zerosToPrepend: Int = scale - digits.count + 1
+			let prefix: String = String(repeating: "0", count: zerosToPrepend)
+			digits = prefix + digits
+		}
+
+		// Index to insert point: scale characters from end
+		let index: String.Index = digits.index(digits.endIndex, offsetBy: -scale)
+		digits.insert(".", at: index)
+
+		// Return the sign if there was one.
+		if isNegative {
+			digits.insert("-", at: digits.startIndex)
+		}
+
+		return Decimal(string: digits) ?? 0
+	}
+
 	/// Creates a fixed-point decimal from integer minor units.
 	///
 	/// - Parameters:
@@ -134,17 +165,6 @@ public struct Decimals: Codable, Sendable, Hashable {
 			}
 		}
 		throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected decimal number")
-	}
-
-	/// Encodes `Decimals` as a JSON number using its `double` value.
-	///
-	/// We intentionally use a single-value container so that JSON output is a plain
-	/// number (e.g., `123.45`) rather than an object. Precision is bounded by
-	/// the `Double` IEEE-754 representation and the current `scale`.
-	@inline(__always)
-	public func encode(to encoder: any Encoder) throws {
-		var container: any SingleValueEncodingContainer = encoder.singleValueContainer()
-		try container.encode(Double(units) / Double(Int.p10[scale]))
 	}
 
 	/// Changes the scale by multiplying or dividing the underlying `units` by 10^Δ.
