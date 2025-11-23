@@ -9,7 +9,7 @@ import Foundation
 
 /// Immutable integer amount in minor units with an explicit decimal scale.
 /// Example: scale = 2 → units are cents; amount = 12345 → 123.45
-public struct Decimals: Codable, Sendable, Hashable {
+public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 
 	public static let zero: Decimals = {
 		Decimals(units: 0, scale: 0)
@@ -20,6 +20,37 @@ public struct Decimals: Codable, Sendable, Hashable {
 
 	public var double: Double {
 		Double(units) / Double(Int.p10[scale])
+	}
+
+	public var description: String {
+		// Fast string representation with decimal point inserted `scale` digits from the right.
+		// Example: units = 12345, scale = 2 -> "123.45"; units = -7, scale = 3 -> "-0.007".
+		guard scale > 0 else {
+			return String(units)
+		}
+
+		let isNegative: Bool = units < 0
+		let magnitude: Int = isNegative ? -units : units
+
+		var digits: String = String(magnitude)
+
+		// Ensure we have at least `scale + 1` digits so that the decimal point can be inserted.
+		if digits.count <= scale {
+			let zerosToPrepend: Int = scale - digits.count + 1
+			let prefix: String = String(repeating: "0", count: zerosToPrepend)
+			digits = prefix + digits
+		}
+
+		// Insert the decimal point `scale` characters from the right.
+		let index: String.Index = digits.index(digits.endIndex, offsetBy: -scale)
+		digits.insert(".", at: index)
+
+		// Restore sign if the original value was negative.
+		if isNegative {
+			digits.insert("-", at: digits.startIndex)
+		}
+
+		return digits
 	}
 
 	public var decimal: Decimal {
