@@ -19,16 +19,32 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 	public let scale: Int
 
 	public var double: Double {
-		Double(units) / Double(Int.p10[scale])
+		if scale >= 0 {
+			return Double(units) / Double(Int.p10[scale])
+		} else {
+			let absScale: Int = -scale
+			return Double(units) * Double(Int.p10[absScale])
+		}
 	}
 
+	/// Fast string representation with decimal point inserted `scale` digits from the right.
+	/// Example: units = 12345, scale = 2 -> "123.45"; units = -7, scale = 3 -> "-0.007".
 	public var description: String {
-		// Fast string representation with decimal point inserted `scale` digits from the right.
-		// Example: units = 12345, scale = 2 -> "123.45"; units = -7, scale = 3 -> "-0.007".
-		guard scale > 0 else {
+		if scale == 0 {
 			return String(units)
 		}
 
+		if scale < 0 {
+			let absScale: Int = -scale
+			let multiplier: Int = Int.p10[absScale]
+			// Здесь number = units * 10^absScale (в Major units)
+			let (number, overflow) = units.multipliedReportingOverflow(by: multiplier)
+			precondition(!overflow, "Overflow in description for negative scale")
+
+			return String(number)
+		}
+
+		// scale > 0 — твоя текущая ветка с точкой
 		let isNegative: Bool = units < 0
 		let magnitude: Int = isNegative ? -units : units
 
@@ -54,9 +70,16 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 	}
 
 	public var decimal: Decimal {
-		// No fractional part – просто целое
-		guard scale > 0 else {
+		// No fractional part
+		if scale == 0 {
 			return Decimal(units)
+		}
+
+		if scale < 0 {
+			let absScale: Int = -scale
+			let number: NSDecimalNumber = NSDecimalNumber(value: units)
+				.multiplying(byPowerOf10: Int16(absScale)) // units * 10^absScale
+			return number.decimalValue
 		}
 
 		let isNegative: Bool = units < 0
@@ -109,23 +132,23 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 	///
 	/// - Parameters:
 	///   - value: Source floating value in major units (e.g. 123.45 when scale=2).
-	///   - scale: Fractional digits count (>= 0).
-	/// - Throws: `notFinite` for NaN/Inf, `overflow` if scaled value does not fit `Int`,
-	///           `negativeScale` if scale < 0.
+	///   - scale: Fractional digits count.
 	/// - Note: Rounds with `.toNearestOrEven`, consistent with integer banker's rounding used elsewhere.
 	@inline(__always)
-	public init?(from value: Double, scale: Int) {
-		// Validate scale
-		guard scale >= 0 else {
-			return nil
+	public init(from value: Double, scale: Int) {
+		let absScale: Int = scale >= 0 ? scale : -scale
+		let multiplier: Int = Int.p10[absScale]
+		let scaled: Double
+
+		if scale < 0 {
+			// Scale and banker's rounding in Double domain
+			// Using rounded(.toNearestOrEven) matches IEEE-754 banker's rounding.
+			scaled = (value / Double(multiplier)).rounded(.toNearestOrEven)
+		} else {
+			// Scale and banker's rounding in Double domain
+			// Using rounded(.toNearestOrEven) matches IEEE-754 banker's rounding.
+			scaled = (value * Double(multiplier)).rounded(.toNearestOrEven)
 		}
-
-		// Fast path multiplier
-		let multiplier: Int = Int.p10[scale]
-
-		// Scale and banker's rounding in Double domain
-		// Using rounded(.toNearestOrEven) matches IEEE-754 banker's rounding.
-		let scaled: Double = (value * Double(multiplier)).rounded(.toNearestOrEven)
 
 		// Normalize negative zero: -0.0 → 0
 		let normalized: Double = scaled == 0.0 ? 0.0 : scaled
@@ -415,6 +438,53 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 	) -> String {
 		let isNegative: Bool = units < 0
 		let magnitude: Int = isNegative ? -units : units
+
+		if scale < 0 {
+			let absScale: Int = -scale
+			let multiplier: Int = Int.pow10(scale: absScale)
+
+			// number = magnitude * 10^absScale, pure integer without fraction
+			let (intPart, overflow) = magnitude.multipliedReportingOverflow(by: multiplier)
+			precondition(!overflow, "Overflow in format() for negative scale")
+
+			// дальше — как сейчас, но с scaleEffective = 0 и fracPart = 0
+			let intDigits: Int = intPart == 0 ? 1 : Decimals.digits(intPart)
+			let groups: Int = groupSeparator != nil ? max(0, (intDigits - 1) / 3) : 0
+			let signWidth: Int = isNegative ? 1 : 0
+			let capacity: Int = signWidth + intDigits + groups
+
+			return String(unsafeUninitializedCapacity: capacity, initializingUTF8With: { (buf: UnsafeMutableBufferPointer<UInt8>) -> Int in
+				var idx: Int = capacity
+
+				func write(_ byte: UInt8) {
+					idx &-= 1
+					buf[idx] = byte
+				}
+
+				// Only the whole part with the grouping
+				var number: Int = intPart
+				var written: Int = 0
+				repeat {
+					if written != 0, written % 3 == 0, let g = groupSeparator {
+						write(Self.asciiCode(for: g))
+					}
+					let digit: UInt8 = UInt8(number % 10)
+					write(48 &+ digit)
+					number /= 10
+					written &+= 1
+				} while number > 0
+
+				if isNegative {
+					write(45) // '-'
+				}
+
+				let initializedCount: Int = capacity - idx
+				if idx > 0, let base: UnsafeMutablePointer<UInt8> = buf.baseAddress {
+					base.moveInitialize(from: base.advanced(by: idx), count: initializedCount)
+				}
+				return initializedCount
+			})
+		}
 
 		// Extract integer and fractional parts in units
 		let div: Int = Int.pow10(scale: scale)
