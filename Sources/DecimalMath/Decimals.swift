@@ -544,6 +544,23 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 		})
 	}
 
+	/// Rounds the price to the nearest value to the minimum.
+	///
+	/// - Parameter minStep: Tick size in the same `price.scale` (minor units). Must be > 0.
+	/// - Returns: Rounded price.
+	/// - Precondition: `minStep > 0`.
+	@inline(__always)
+	public func roundPrice(for minStep: Decimals) -> Decimals {
+		precondition(minStep.units > 0, "minStep must be > 0")
+		let unit: Int = units >= 0 ? units : -units
+		let tick: Int = minStep.units
+
+		let div: Int = unit / tick
+		if units >= 0 {
+			return .init(units: div &* tick, scale: scale)
+		}
+		return .init(units: -div &* tick, scale: scale)
+	}
 	// MARK: - Low-level helpers
 
 	/// ASCII code for a Character assumed to be single-scalar (like separators).

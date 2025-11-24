@@ -19,7 +19,7 @@ public enum LotMath {
 	public static func roundQuantity(
 		_ quantity: Int,
 		lotSize: Int,
-		mode: StepRounding
+		mode: StepRounding = .floor
 	) -> Int {
 		precondition(lotSize > 0, "lotSize must be > 0")
 		switch mode {
