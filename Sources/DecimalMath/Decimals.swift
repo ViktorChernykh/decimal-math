@@ -7,13 +7,20 @@
 
 import Foundation
 
+public extension CodingUserInfoKey {
+	static let scale: CodingUserInfoKey = {
+		guard let key: CodingUserInfoKey = .init(rawValue: "scale") else {
+			fatalError("Unable to create CodingUserInfoKey.scale")
+		}
+		return key
+	}()
+}
+
 /// Immutable integer amount in minor units with an explicit decimal scale.
 /// Example: scale = 2 → units are cents; amount = 12345 → 123.45
 public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 
-	public static let zero: Decimals = {
-		Decimals(units: 0, scale: 0)
-	}()
+	public static let zero: Decimals = .init(units: 0, scale: 0)
 
 	public let units: Int
 	public let scale: Int
@@ -37,7 +44,7 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 		if scale < 0 {
 			let absScale: Int = -scale
 			let multiplier: Int = Int.p10[absScale]
-			// Здесь number = units * 10^absScale (в Major units)
+			// number = units * 10^absScale (major units, no fractional part)
 			let (number, overflow) = units.multipliedReportingOverflow(by: multiplier)
 			precondition(!overflow, "Overflow in description for negative scale")
 
@@ -176,24 +183,23 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 
 	/// Decodes from JSON number or string:
 	/// - If value is a JSON number → decode as Decimal (precise), then map to (units, scale)
+	/// - If value is a google.type.Decimal     → parse with en_US_POSIX locale, then map
 	/// - If value is a String     → parse with en_US_POSIX locale, then map
-	/// - Fallback: try Double → Decimal (not recommended, but we'll leave it as a backup way).
+	/// Double is not used as a separate path intentionally,
+	/// so as not to pick up unnecessary artifacts of binary representation.
 	@inline(__always)
 	public init(from decoder: any Decoder) throws {
 		let container: any SingleValueDecodingContainer = try decoder.singleValueContainer()
 
-		// Double or Decimal
+		// Decimal
 		if let decimal: Decimal = try? container.decode(Decimal.self) {
-			// Decimal.exponent is negative when there are fractional digits
-			scale = decimal.exponent < 0 ? -decimal.exponent : 0
-			if scale == 0 {
-				units = NSDecimalNumber(decimal: decimal).intValue
-				return
+			// scale is set externally – use init(from:scale:)
+			if let targetScale: Int = decoder.userInfo[.scale] as? Int {
+				let value: Decimals = Decimals(decimal: decimal)
+				self = value.scale != targetScale ? value.rescaled(to: targetScale) : value
+			} else {
+				self = Decimals(decimal: decimal)
 			}
-			// Fast: internal base-10 power (no building Decimal 10^scale)
-			let shifted: NSDecimalNumber = NSDecimalNumber(decimal: decimal)
-				.multiplying(byPowerOf10: Int16(scale)) // 5.12 * 10^2 = 512
-			units = shifted.intValue
 			return
 		} else
 
@@ -296,8 +302,7 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 	/// - Precondition: Multiplier must be non-negative; no overflow.
 	@inline(__always)
 	public func multiply(_ numerator: Int, over denominator: Int) -> Decimals {
-		precondition(numerator >= 0, "Numerator must be non-negative in multiply(_:over:)")
-		precondition(denominator > 0, "Division must be more then zero in multiply(_:over:)")
+		precondition(denominator != 0, "Division must be not equal zero in multiply(_:over:)")
 
 		let (num, overflow) = units.multipliedReportingOverflow(by: numerator)
 		precondition(!overflow, "Overflow in multiply(_:over:): \(units) * \(numerator)")
@@ -544,7 +549,8 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 		})
 	}
 
-	/// Rounds the price to the nearest value to the minimum.
+	/// Truncates the price to the nearest tick towards zero.
+	/// For positive values this is equivalent to rounding down to the nearest tick.
 	///
 	/// - Parameter minStep: Tick size in the same `price.scale` (minor units). Must be > 0.
 	/// - Returns: Rounded price.
@@ -674,8 +680,15 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 					if of2 { return nil }
 					expValue = tmp2
 				} else {
-					// accumulate mantissa absolute units
-					unitsAbs = 10 &* unitsAbs &+ digit
+					// accumulate mantissa absolute units: unitsAbs = unitsAbs * 10 + digit
+					let (tmp, of1) = unitsAbs.multipliedReportingOverflow(by: 10)
+					if of1 { return nil }
+
+					let (tmp2, of2) = tmp.addingReportingOverflow(digit)
+					if of2 { return nil }
+
+					unitsAbs = tmp2
+
 					if sawSeparator {
 						scale &+= 1
 					}
