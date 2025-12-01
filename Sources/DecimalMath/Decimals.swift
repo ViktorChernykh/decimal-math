@@ -42,8 +42,7 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 		}
 
 		if scale < 0 {
-			let absScale: Int = -scale
-			let multiplier: Int = Int.p10[absScale]
+			let multiplier: Int = Int.p10[-scale]
 			// number = units * 10^absScale (major units, no fractional part)
 			let (number, overflow) = units.multipliedReportingOverflow(by: multiplier)
 			precondition(!overflow, "Overflow in description for negative scale")
@@ -52,10 +51,7 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 		}
 
 		// scale > 0 — current branch with a dot
-		let isNegative: Bool = units < 0
-		let magnitude: Int = isNegative ? -units : units
-
-		var digits: String = String(magnitude)
+		var digits: String = String(units.magnitude)
 
 		// Ensure we have at least `scale + 1` digits so that the decimal point can be inserted.
 		if digits.count <= scale {
@@ -69,7 +65,7 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 		digits.insert(".", at: index)
 
 		// Restore sign if the original value was negative.
-		if isNegative {
+		if units < 0 {
 			digits.insert("-", at: digits.startIndex)
 		}
 

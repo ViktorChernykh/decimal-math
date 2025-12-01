@@ -296,6 +296,15 @@ struct DecimalsTests {
 		#expect(r2.scale == 2)
 	}
 
+
+	@Test("multiply(_:over:) numerator can be negative")
+	func multiply_over_negative_num_exits() {
+		let value: Decimals = .init(units: 100, scale: 2)
+		let newValue: Decimals = value.multiply(-1, over: 2)
+		#expect(newValue.units == -50)
+		#expect(newValue.scale == 2)
+	}
+
 	// MARK: Division (÷ Int)
 
 	@Test

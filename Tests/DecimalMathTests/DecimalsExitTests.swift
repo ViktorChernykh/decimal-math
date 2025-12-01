@@ -33,14 +33,6 @@ struct DecimalsExitTests {
 		}
 	}
 
-	@Test("multiply(_:over:) preconditions: numerator must be non-negative")
-	func multiply_over_negative_num_exits() async {
-		await #expect(processExitsWith: .failure) {
-			let value: Decimals = .init(units: 100, scale: 2)
-			_ = value.multiply(-1, over: 2)
-		}
-	}
-
 	// MARK: - allocateProportionally(weights:)
 
 	@Test("allocateProportionally: empty weights precondition")
