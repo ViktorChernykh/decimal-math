@@ -51,7 +51,7 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 			return String(number)
 		}
 
-		// scale > 0 — твоя текущая ветка с точкой
+		// scale > 0 — current branch with a dot
 		let isNegative: Bool = units < 0
 		let magnitude: Int = isNegative ? -units : units
 
@@ -296,7 +296,7 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 	/// Multiplies by a rational factor `numerator / denominator` using banker's rounding.
 	///
 	/// - Parameters:
-	///   - numerator: Numerator of the ratio (can be negative; denominator is normalized to positive).
+	///   - numerator: Numerator of the ratio.
 	///   - denominator: Denominator of the ratio; must be non-zero.
 	/// - Returns: Product with the same `scale`.
 	/// - Precondition: Multiplier must be non-negative; no overflow.
