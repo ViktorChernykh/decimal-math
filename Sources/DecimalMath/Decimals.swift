@@ -164,17 +164,47 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 	/// Converts Decimal → (units, scale)
 	/// Example: 5.12 → (512, 2)
 	@inline(__always)
-	public init(decimal: Decimal) {
-		// Decimal.exponent is negative when there are fractional digits
-		scale = decimal.exponent < 0 ? -decimal.exponent : 0
-		if scale == 0 {
-			units = NSDecimalNumber(decimal: decimal).intValue
-			return
+	public init(decimal: Decimal, scale targetScale: Int? = nil) {
+		let length: Int = Int(decimal._length)
+		// Decimals is backed by Int (64-bit), so we can only safely consume up to 4 words (64 bits).
+		precondition(length <= 4, "Decimal magnitude does not fit into Int-backed Decimals")
+
+		// "Native" scale for Decimal: number of fractional digits.
+		let rawExponent: Int = Int(decimal._exponent)
+		let naturalScale: Int = rawExponent < 0 ? -rawExponent : 0
+
+		// Collect integer mantissa from internal Decimal words (little-endian 16-bit chunks).
+		let words = decimal._mantissa
+		let parts: [UInt16] = [words.0, words.1, words.2, words.3]
+
+		var mantissa: Int = 0
+		for index in 0..<length {
+			mantissa &+= Int(parts[index]) << (index * 16)
 		}
-		// Fast: internal base-10 power (no building Decimal 10^scale)
-		let shifted: NSDecimalNumber = NSDecimalNumber(decimal: decimal)
-			.multiplying(byPowerOf10: Int16(scale)) // 5.12 * 10^2 = 512
-		units = shifted.intValue
+
+		// If exponent > 0 the number has trailing decimal zeros
+		// that are not stored in the mantissa – add them back.
+		if rawExponent > 0 {
+			let factor: Int = Int.pow10(scale: rawExponent)
+			mantissa &*= factor
+		}
+		// Restore sign.
+		if decimal.isSignMinus {
+			mantissa = -mantissa
+		}
+
+		if let targetScale {
+			scale = targetScale
+
+			if targetScale != naturalScale {
+				units = mantissa.pow10(targetScale - naturalScale)
+			} else {
+				units = mantissa
+			}
+		} else {
+			units = mantissa
+			scale = naturalScale
+		}
 	}
 
 	/// Decodes from JSON number or string:
@@ -191,8 +221,7 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 		if let decimal: Decimal = try? container.decode(Decimal.self) {
 			// scale is set externally – use init(from:scale:)
 			if let targetScale: Int = decoder.userInfo[.scale] as? Int {
-				let value: Decimals = Decimals(decimal: decimal)
-				self = value.scale != targetScale ? value.rescaled(to: targetScale) : value
+				self = Decimals(decimal: decimal, scale: targetScale)
 			} else {
 				self = Decimals(decimal: decimal)
 			}
