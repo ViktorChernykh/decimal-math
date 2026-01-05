@@ -80,78 +80,80 @@ public func / (_ lhs: Decimals, _ rhs: Int) -> Decimals {
 	return Decimals(units: lhs.units * rhs >= 0 ? rounded : -rounded, scale: lhs.scale)
 }
 
+extension Decimals: Comparable {
 
-@inline(__always)
-public func == (_ lhs: Decimals, _ rhs: Decimals) -> Bool {
-	if lhs.scale == rhs.scale {
-		return lhs.units == rhs.units
-	} else {
-		let right: Decimals = rhs.rescaled(to: lhs.scale)
-		return lhs.units == right.units
+	@inline(__always)
+	public static func == (_ lhs: Decimals, _ rhs: Decimals) -> Bool {
+		if lhs.scale == rhs.scale {
+			return lhs.units == rhs.units
+		} else {
+			let right: Decimals = rhs.rescaled(to: lhs.scale)
+			return lhs.units == right.units
+		}
 	}
-}
 
 
-@inline(__always)
-public func != (_ lhs: Decimals, _ rhs: Decimals) -> Bool {
-	if lhs.scale == rhs.scale {
-		return lhs.units != rhs.units
-	} else {
-		let scale: Int = max(lhs.scale, rhs.scale)
-		let left: Decimals = lhs.rescaled(to: scale)
-		let right: Decimals = rhs.rescaled(to: scale)
-		return left.units != right.units
+	@inline(__always)
+	public static func != (_ lhs: Decimals, _ rhs: Decimals) -> Bool {
+		if lhs.scale == rhs.scale {
+			return lhs.units != rhs.units
+		} else {
+			let scale: Int = max(lhs.scale, rhs.scale)
+			let left: Decimals = lhs.rescaled(to: scale)
+			let right: Decimals = rhs.rescaled(to: scale)
+			return left.units != right.units
+		}
 	}
-}
 
 
-@inline(__always)
-public func > (_ lhs: Decimals, _ rhs: Decimals) -> Bool {
-	if lhs.scale == rhs.scale {
-		return lhs.units > rhs.units
-	} else {
-		let scale: Int = max(lhs.scale, rhs.scale)
-		let left: Decimals = lhs.rescaled(to: scale)
-		let right: Decimals = rhs.rescaled(to: scale)
-		return left.units > right.units
+	@inline(__always)
+	public static func > (_ lhs: Decimals, _ rhs: Decimals) -> Bool {
+		if lhs.scale == rhs.scale {
+			return lhs.units > rhs.units
+		} else {
+			let scale: Int = max(lhs.scale, rhs.scale)
+			let left: Decimals = lhs.rescaled(to: scale)
+			let right: Decimals = rhs.rescaled(to: scale)
+			return left.units > right.units
+		}
 	}
-}
 
 
-@inline(__always)
-public func < (_ lhs: Decimals, _ rhs: Decimals) -> Bool {
-	if lhs.scale == rhs.scale {
-		return lhs.units < rhs.units
-	} else {
-		let scale: Int = max(lhs.scale, rhs.scale)
-		let left: Decimals = lhs.rescaled(to: scale)
-		let right: Decimals = rhs.rescaled(to: scale)
-		return left.units < right.units
+	@inline(__always)
+	public static func < (_ lhs: Decimals, _ rhs: Decimals) -> Bool {
+		if lhs.scale == rhs.scale {
+			return lhs.units < rhs.units
+		} else {
+			let scale: Int = max(lhs.scale, rhs.scale)
+			let left: Decimals = lhs.rescaled(to: scale)
+			let right: Decimals = rhs.rescaled(to: scale)
+			return left.units < right.units
+		}
 	}
-}
 
 
-@inline(__always)
-public func >= (_ lhs: Decimals, _ rhs: Decimals) -> Bool {
-	if lhs.scale == rhs.scale {
-		return lhs.units >= rhs.units
-	} else {
-		let scale: Int = max(lhs.scale, rhs.scale)
-		let left: Decimals = lhs.rescaled(to: scale)
-		let right: Decimals = rhs.rescaled(to: scale)
-		return left.units >= right.units
+	@inline(__always)
+	public static func >= (_ lhs: Decimals, _ rhs: Decimals) -> Bool {
+		if lhs.scale == rhs.scale {
+			return lhs.units >= rhs.units
+		} else {
+			let scale: Int = max(lhs.scale, rhs.scale)
+			let left: Decimals = lhs.rescaled(to: scale)
+			let right: Decimals = rhs.rescaled(to: scale)
+			return left.units >= right.units
+		}
 	}
-}
 
 
-@inline(__always)
-public func <= (_ lhs: Decimals, _ rhs: Decimals) -> Bool {
-	if lhs.scale == rhs.scale {
-		return lhs.units <= rhs.units
-	} else {
-		let scale: Int = max(lhs.scale, rhs.scale)
-		let left: Decimals = lhs.rescaled(to: scale)
-		let right: Decimals = rhs.rescaled(to: scale)
-		return left.units <= right.units
+	@inline(__always)
+	public static func <= (_ lhs: Decimals, _ rhs: Decimals) -> Bool {
+		if lhs.scale == rhs.scale {
+			return lhs.units <= rhs.units
+		} else {
+			let scale: Int = max(lhs.scale, rhs.scale)
+			let left: Decimals = lhs.rescaled(to: scale)
+			let right: Decimals = rhs.rescaled(to: scale)
+			return left.units <= right.units
+		}
 	}
 }
