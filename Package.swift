@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "decimal-math",
+    name: "DecimalMath",
     platforms: [
 		.macOS(.v14),
 		.iOS(.v17)

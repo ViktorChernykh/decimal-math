@@ -1,6 +1,6 @@
 //
 //  BinaryFunctions.swift
-//  decimal-math
+//  DecimalMath
 //
 //  Created by Victor Chernykh on 21.10.2025.
 //
