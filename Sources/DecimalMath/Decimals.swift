@@ -25,6 +25,10 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 	public let units: Int
 	public let scale: Int
 
+	public var abs: Decimals {
+		units > 0 ? self : self * -1
+	}
+
 	public var double: Double {
 		if scale >= 0 {
 			return Double(units) / Double(Int.p10[scale])
