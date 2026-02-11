@@ -19,6 +19,10 @@ public extension CodingUserInfoKey {
 /// Immutable integer amount in minor units with an explicit decimal scale.
 /// Example: scale = 2 → units are cents; amount = 12345 → 123.45
 public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
+	private enum CodingKeys: String, CodingKey {
+		case units
+		case scale
+	}
 
 	public static let zero: Decimals = .init(units: 0, scale: 0)
 
@@ -252,6 +256,13 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 				self.scale = parsed.scale
 				return
 			}
+		} else
+
+		// Object form: {"units":1,"scale":2}
+		if let keyed: KeyedDecodingContainer<CodingKeys> = try? decoder.container(keyedBy: CodingKeys.self) {
+			self.units = try keyed.decode(Int.self, forKey: .units)
+			self.scale = try keyed.decode(Int.self, forKey: .scale)
+			return
 		}
 		throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected decimal number")
 	}
