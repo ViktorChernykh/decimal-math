@@ -30,7 +30,7 @@ public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
 	public let scale: Int
 
 	public var abs: Decimals {
-		units > 0 ? self : self * -1
+		units >= 0 ? self : self * -1
 	}
 
 	public var double: Double {
