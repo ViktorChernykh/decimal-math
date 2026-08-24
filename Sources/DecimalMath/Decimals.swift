@@ -16,9 +16,32 @@ public extension CodingUserInfoKey {
 	}()
 }
 
+extension Decimals: Hashable {
+	public func hash(into hasher: inout Hasher) {
+		guard units != 0 else {
+			// Every representation of zero has the same numeric value, regardless of scale.
+			hasher.combine(0)
+			hasher.combine(0)
+			return
+		}
+
+		// Remove insignificant trailing decimal zeroes so numerically equal representations,
+		// such as 1.20 and 1.200, contribute identical components to the hash.
+		var canonicalUnits: Int = units
+		var canonicalScale: Int = scale
+		while canonicalScale > Int.min, canonicalUnits.isMultiple(of: 10) {
+			canonicalUnits /= 10
+			canonicalScale -= 1
+		}
+
+		hasher.combine(canonicalUnits)
+		hasher.combine(canonicalScale)
+	}
+}
+
 /// Immutable integer amount in minor units with an explicit decimal scale.
 /// Example: scale = 2 → units are cents; amount = 12345 → 123.45
-public struct Decimals: Codable, Sendable, Hashable, CustomStringConvertible {
+public struct Decimals: Codable, Sendable, CustomStringConvertible {
 	private enum CodingKeys: String, CodingKey {
 		case units
 		case scale

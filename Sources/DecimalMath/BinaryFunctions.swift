@@ -8,15 +8,27 @@
 /// Adds two fixed-point values, preserving left `scale` (banker's rounding if downscaling RHS).
 @inline(__always)
 public func + (_ lhs: Decimals, _ rhs: Decimals) -> Decimals {
-	let right: Decimals = rhs.rescaled(to: lhs.scale)
-	return Decimals(units: lhs.units &+ right.units, scale: lhs.scale)
+	let scale: Int = max(lhs.scale, rhs.scale)
+	let left: Decimals = lhs.rescaled(to: scale)
+	let right: Decimals = rhs.rescaled(to: scale)
+
+	return Decimals(units: left.units + right.units, scale: scale)
 }
 
-/// Subtracts another fixed-point value, preserving left `scale` (banker's rounding if downscaling RHS).
+/// Subtracts two fixed-point values at the more precise of their scales.
+///
+/// Neither operand is downscaled, so subtraction does not discard fractional digits. The result
+/// keeps `max(lhs.scale, rhs.scale)` and traps if either exact rescaling or the subtraction itself
+/// cannot be represented by `Int`.
 @inline(__always)
 public func - (_ lhs: Decimals, _ rhs: Decimals) -> Decimals {
-	let right: Decimals = rhs.rescaled(to: lhs.scale)
-	return Decimals(units: lhs.units &- right.units, scale: lhs.scale)
+	let scale: Int = max(lhs.scale, rhs.scale)
+	let left: Decimals = lhs.rescaled(to: scale)
+	let right: Decimals = rhs.rescaled(to: scale)
+	let (units, overflow): (Int, Bool) = left.units.subtractingReportingOverflow(right.units)
+	precondition(!overflow, "Overflow in Decimals subtraction: \(left.units) - \(right.units)")
+
+	return Decimals(units: units, scale: scale)
 }
 
 /// Multiplies two fixed-point values using banker's rounding, preserving left `scale`.
@@ -80,16 +92,19 @@ public func / (_ lhs: Decimals, _ rhs: Int) -> Decimals {
 	return Decimals(units: lhs.units * rhs >= 0 ? rounded : -rounded, scale: lhs.scale)
 }
 
-extension Decimals: Comparable {
+extension Decimals: Comparable, Equatable {
 
 	@inline(__always)
 	public static func == (_ lhs: Decimals, _ rhs: Decimals) -> Bool {
 		if lhs.scale == rhs.scale {
 			return lhs.units == rhs.units
-		} else {
-			let right: Decimals = rhs.rescaled(to: lhs.scale)
-			return lhs.units == right.units
 		}
+
+		let scale: Int = max(lhs.scale, rhs.scale)
+		let left: Decimals = lhs.rescaled(to: scale)
+		let right: Decimals = rhs.rescaled(to: scale)
+
+		return left.units == right.units
 	}
 
 
@@ -97,12 +112,13 @@ extension Decimals: Comparable {
 	public static func != (_ lhs: Decimals, _ rhs: Decimals) -> Bool {
 		if lhs.scale == rhs.scale {
 			return lhs.units != rhs.units
-		} else {
-			let scale: Int = max(lhs.scale, rhs.scale)
-			let left: Decimals = lhs.rescaled(to: scale)
-			let right: Decimals = rhs.rescaled(to: scale)
-			return left.units != right.units
 		}
+
+		let scale: Int = max(lhs.scale, rhs.scale)
+		let left: Decimals = lhs.rescaled(to: scale)
+		let right: Decimals = rhs.rescaled(to: scale)
+
+		return left.units != right.units
 	}
 
 

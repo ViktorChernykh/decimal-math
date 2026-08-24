@@ -2,7 +2,7 @@
 import Foundation
 import Testing
 
-@Suite("Binary operators on Decimals (banker's rounding, scale preservation, sign handling)")
+@Suite("Binary operators on Decimals (banker's rounding, scale handling, sign handling)")
 struct DecimalsTests {
 
 	// MARK: - rescaled(to:)
@@ -207,20 +207,46 @@ struct DecimalsTests {
 	}
 
 	@Test
-	func subtract_scaleMismatch_roundHalfToEven() {
+	func subtract_scaleMismatch_preservesMorePreciseScale() {
 		let a: Decimals = Decimals(units: 100, scale: 2)	// 1.00
 
-		// 0.005 → 0.00 (even), 1.00 - 0.00 = 1.00
+		// 1.000 - 0.005 = 0.995; no fractional digits are discarded.
 		let b1: Decimals = Decimals(units: 5, scale: 3)
 		let r1: Decimals = a - b1
-		#expect(r1.units == 100)
-		#expect(r1.scale == 2)
+		#expect(r1.units == 995)
+		#expect(r1.scale == 3)
 
-		// 0.015 → 0.02 (even), 1.00 - 0.02 = 0.98
+		// 1.000 - 0.015 = 0.985.
 		let b2: Decimals = Decimals(units: 15, scale: 3)
 		let r2: Decimals = a - b2
-		#expect(r2.units == 98)
-		#expect(r2.scale == 2)
+		#expect(r2.units == 985)
+		#expect(r2.scale == 3)
+	}
+
+	@Test
+	func subtract_scaleMismatch() {
+		let a: Decimals = Decimals(units: 100, scale: 0)
+
+		// 100 - 99.99 = 0.01
+		let b: Decimals = Decimals(units: 9999, scale: 2)
+		let r: Decimals = a - b
+		#expect(r.units == 1)
+		#expect(r.scale == 2)
+
+		let reversed: Decimals = b - a
+		#expect(reversed.units == -1)
+		#expect(reversed.scale == 2)
+	}
+
+	@Test
+	func subtract_negativeScale_preservesMorePreciseScale() {
+		let hundred: Decimals = .init(units: 10, scale: -1)
+		let ninetyNineNinetyNine: Decimals = .init(units: 9_999, scale: 2)
+
+		let result: Decimals = hundred - ninetyNineNinetyNine
+
+		#expect(result.units == 1)
+		#expect(result.scale == 2)
 	}
 
 	// MARK: Multiplication (Decimals × Decimals)
@@ -342,7 +368,48 @@ struct DecimalsTests {
 		let a: Decimals = Decimals(units: 1200, scale: 3)
 		let b: Decimals = Decimals(units: 120, scale: 2)
 		#expect(a == b)
-		#expect(!(a != b))
+		#expect(b == a)
+		#expect((a != b) == false)
+		#expect((b != a) == false)
+	}
+
+	@Test(
+		"Equivalent numeric representations produce equal hashes",
+		arguments: [
+			(Decimals(units: 1_200, scale: 3), Decimals(units: 120, scale: 2)),
+			(Decimals(units: -1_200, scale: 3), Decimals(units: -12, scale: 1)),
+			(Decimals(units: 0, scale: 0), Decimals(units: 0, scale: 18)),
+			(Decimals(units: 100, scale: -1), Decimals(units: 10, scale: -2)),
+		]
+	)
+	func equivalentRepresentations_haveEqualHashes(_ lhs: Decimals, _ rhs: Decimals) {
+		#expect(lhs == rhs)
+		#expect(rhs == lhs)
+		#expect(lhs.hashValue == rhs.hashValue)
+	}
+
+	@Test("Set deduplicates equivalent Decimals representations")
+	func set_deduplicatesEquivalentRepresentations() {
+		let values: Set<Decimals> = [
+			Decimals(units: 1_200, scale: 3),
+			Decimals(units: 120, scale: 2),
+			Decimals(units: 12, scale: 1),
+		]
+
+		#expect(values.count == 1)
+	}
+
+	@Test("Hashing equivalent values is safe at extreme scales")
+	func hashing_handlesExtremeScales() {
+		let minimumScale: Decimals = .init(units: 10, scale: .min)
+		let equivalentMinimumScale: Decimals = .init(units: 100, scale: .min + 1)
+		let maximumScale: Decimals = .init(units: 10, scale: .max)
+		let equivalentMaximumScale: Decimals = .init(units: 1, scale: .max - 1)
+
+		#expect(minimumScale == equivalentMinimumScale)
+		#expect(minimumScale.hashValue == equivalentMinimumScale.hashValue)
+		#expect(maximumScale == equivalentMaximumScale)
+		#expect(maximumScale.hashValue == equivalentMaximumScale.hashValue)
 	}
 
 	@Test

@@ -13,6 +13,26 @@ struct DecimalsExitTests {
 		}
 	}
 
+	// MARK: - Subtraction
+
+	@Test("Subtraction exits instead of silently wrapping on overflow")
+	func subtraction_overflow_exits() async {
+		await #expect(processExitsWith: .failure) {
+			let maximum: Decimals = .init(units: .max, scale: 0)
+			let negativeOne: Decimals = .init(units: -1, scale: 0)
+			_ = maximum - negativeOne
+		}
+	}
+
+	@Test("Subtraction exits instead of silently wrapping on underflow")
+	func subtraction_underflow_exits() async {
+		await #expect(processExitsWith: .failure) {
+			let minimum: Decimals = .init(units: .min, scale: 0)
+			let one: Decimals = .init(units: 1, scale: 0)
+			_ = minimum - one
+		}
+	}
+
 	// MARK: - divide(_:)
 
 	@Test("divide(_:) preconditions: divisor must be > 0")
