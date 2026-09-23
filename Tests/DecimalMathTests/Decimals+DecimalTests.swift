@@ -68,10 +68,48 @@ struct DecimalsDecimalInitTests {
 	func initFromDecimal_withTargetScale_equalToNatural() {
 		// targetScale == naturalScale → no rescale
 		let decimal: Decimal = Decimal(string: "123.45")!
-		let value: Decimals = .init(decimal: decimal, scale: 3)
+		let value: Decimals = .init(decimal: decimal, scale: 2)
 
-		#expect(value.scale == 3)
-		#expect(value.units == 123450)
+		#expect(value.scale == 2)
+		#expect(value.units == 12345)
 		#expect(value.decimal == decimal)
+	}
+
+	@Test(
+		"Conversion supports Int-backed Decimal boundaries",
+		arguments: [
+			("0", 0, 0),
+			("0.000000000000000001", 1, 18),
+			("9223372036854775807", Int.max, 0),
+		]
+	)
+	func initFromDecimal_supportsIntBackedBoundaries(
+		_ source: String,
+		expectedUnits: Int,
+		expectedScale: Int
+	) throws {
+		let decimal: Decimal = try #require(Decimal(string: source))
+		let value: Decimals = .init(decimal: decimal)
+
+		#expect(value.units == expectedUnits)
+		#expect(value.scale == expectedScale)
+		#expect(value.decimal == decimal)
+	}
+
+	@Test(
+		"Target scale applies banker's rounding",
+		arguments: [
+			("5.125", 512),
+			("5.135", 514),
+			("-5.125", -512),
+			("-5.135", -514),
+		]
+	)
+	func initFromDecimal_downscalesWithBankersRounding(_ source: String, expectedUnits: Int) throws {
+		let decimal: Decimal = try #require(Decimal(string: source))
+		let value: Decimals = .init(decimal: decimal, scale: 2)
+
+		#expect(value.units == expectedUnits)
+		#expect(value.scale == 2)
 	}
 }

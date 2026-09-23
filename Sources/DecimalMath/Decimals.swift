@@ -196,6 +196,16 @@ public struct Decimals: Codable, Sendable, CustomStringConvertible {
 	/// Example: 5.12 → (512, 2)
 	@inline(__always)
 	public init(decimal: Decimal, scale targetScale: Int? = nil) {
+#if os(Linux)
+		// swift-corelibs-foundation keeps Decimal's storage fields internal.
+		// Decimal.description is locale-independent and uses a dot separator, so reuse
+		// the same exact ASCII parser used by the string and Codable initializers.
+		guard let parsed: (units: Int, scale: Int) = Decimals.parseStringToUnitsScale(decimal.description) else {
+			preconditionFailure("Decimal must be finite and fit into Int-backed Decimals")
+		}
+		let mantissa: Int = parsed.units
+		let naturalScale: Int = parsed.scale
+#else
 		let length: Int = Int(decimal._length)
 		// Decimals is backed by Int (64-bit), so we can only safely consume up to 4 words (64 bits).
 		precondition(length <= 4, "Decimal magnitude does not fit into Int-backed Decimals")
@@ -223,6 +233,7 @@ public struct Decimals: Codable, Sendable, CustomStringConvertible {
 		if decimal.isSignMinus {
 			mantissa = -mantissa
 		}
+#endif
 
 		if let targetScale {
 			scale = targetScale

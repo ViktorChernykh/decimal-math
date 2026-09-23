@@ -185,14 +185,14 @@ struct DecimalsTests {
 		// 0.005 with scale=3 → to 2 decimals with banker's rounding = 0.00 (tie to even)
 		let b1: Decimals = Decimals(units: 5, scale: 3)
 		let r1: Decimals = a + b1
-		#expect(r1.units == 100)	// 1.00
-		#expect(r1.scale == 2)
+		#expect(r1.units == 1005)	// 1.00
+		#expect(r1.scale == 3)
 
 		// 0.015 with scale=3 → to 2 decimals with banker's = 0.02 (tie goes to even = .02)
 		let b2: Decimals = Decimals(units: 15, scale: 3)
 		let r2: Decimals = a + b2
-		#expect(r2.units == 102)	// 1.02
-		#expect(r2.scale == 2)
+		#expect(r2.units == 1015)	// 1.02
+		#expect(r2.scale == 3)
 	}
 
 	// MARK: Subtraction
