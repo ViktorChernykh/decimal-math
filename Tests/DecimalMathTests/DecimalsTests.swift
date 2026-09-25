@@ -144,6 +144,27 @@ struct DecimalsTests {
 		}
 	}
 
+	@Test("Parse fractions without an integer part", arguments: [
+		(".5", 5, 1),
+		("+.5", 5, 1),
+		("-.5", -5, 1),
+		(",5", 5, 1),
+		("+,5", 5, 1),
+		("-,5", -5, 1),
+		(".0050", 50, 4),
+		("-.000", 0, 3),
+		(".5e0", 5, 1),
+		(".5e2", 50, 0),
+		(".50e1", 50, 1),
+		("-.5E-2", -5, 3),
+		(",5e+1", 5, 0)
+	])
+	func parseWithoutIntegerPart(source: String, expectedUnits: Int, expectedScale: Int) throws {
+		let value: Decimals = try #require(Decimals(from: source))
+		#expect(value.units == expectedUnits)
+		#expect(value.scale == expectedScale)
+	}
+
 	/// Ensures invalid strings are rejected (returning `nil`).
 	@Test("Reject invalid ASCII strings")
 	func testParseInvalidAsciiStrings() throws {
@@ -151,8 +172,22 @@ struct DecimalsTests {
 			"",
 			".",
 			",",
-			"+.5",
-			".5",
+			"+.",
+			"-.",
+			"+,",
+			"-,",
+			".+5",
+			".-5",
+			",+5",
+			",-5",
+			"..5",
+			".,5",
+			",.5",
+			",,5",
+			".e2",
+			".5e",
+			".5e+",
+			".5e-",
 			"123.",
 			"12..3",
 			"1 2",

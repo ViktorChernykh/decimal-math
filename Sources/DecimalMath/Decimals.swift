@@ -664,8 +664,9 @@ public struct Decimals: Codable, Sendable, CustomStringConvertible {
 
 	/// Parses ASCII decimal string into `(units, scale)` pair.
 	///
-	/// Accepted forms: optional sign ('+' or '-'), digits, optional single decimal separator '.' or ',', optional exponent 'e' or 'E'.
-	/// Examples: "123", "-123.45", "+0,001", "1.23e2", "-1.2E-3". Grouping separators are NOT supported.
+	/// Accepted forms: optional sign ('+' or '-'), decimal mantissa, optional exponent 'e' or 'E'.
+	/// The mantissa may omit integer digits before '.' or ',', but a separator requires fractional digits.
+	/// Examples: "123", "-123.45", ".5", "-,001", "1.23e2", "-1.2E-3". Grouping separators are NOT supported.
 	/// Returns `nil` on invalid input.
 	@inline(__always)
 	private static func parseStringToUnitsScale(_ value: String) -> (Int, Int)? {
@@ -720,8 +721,11 @@ public struct Decimals: Codable, Sendable, CustomStringConvertible {
 					// no decimal separator allowed in exponent
 					return nil
 				}
-				// Must have at least one digit before the separator; only one separator allowed
-				if !sawDigits || sawSeparator { return nil }
+				// Integer digits are optional; only one separator is allowed.
+				if sawSeparator {
+					return nil
+				}
+				begin = false
 				sawSeparator = true
 				continue
 

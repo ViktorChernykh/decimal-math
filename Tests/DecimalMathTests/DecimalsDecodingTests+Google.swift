@@ -62,6 +62,19 @@ struct GoogleDecimalDecodingTests {
 		#expect(v2.units == -1_050 && v2.scale == 2)
 	}
 
+	@Test("Decode fractions without an integer part", arguments: [
+		(".5", 5, 1),
+		("+.5", 5, 1),
+		("-,5", -5, 1),
+		(".0050", 50, 4),
+		("  -.5E-2  ", -5, 3)
+	])
+	func decodeWithoutIntegerPart(source: String, expectedUnits: Int, expectedScale: Int) throws {
+		let value: Decimals = try decodeAmount(source)
+		#expect(value.units == expectedUnits)
+		#expect(value.scale == expectedScale)
+	}
+
 	@Test("Leading/trailing spaces are trimmed")
 	func testTrimming() throws {
 		let v: Decimals = try decodeAmount("   7.5  ")

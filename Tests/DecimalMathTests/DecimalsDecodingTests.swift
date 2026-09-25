@@ -76,9 +76,9 @@ struct DecimalsDecodingTests {
 		#expect(error == "error")
 	}
 
-	/// Narrow corner-case: ".5" is correct as 0.5.
+	/// A JSON number requires an integer part, even though the string parser accepts ".5".
 	@Test
-	func decode_String_LeadingDot() {
+	func decode_Number_LeadingDot_Fails() {
 		let error: String = decodeError(".5")
 		#expect(error == "error")
 	}
@@ -128,11 +128,18 @@ struct DecimalsDecodingTests {
 		#expect(error == "error")
 	}
 
-	@Test("Decode from invalid2 JSON string")
-	func testDecodeFromInvalid2JsonString() throws {
-		let jsonString: String = "\".3400\"" // a JSON string token
-		let error: String = decodeError(jsonString)
-		#expect(error == "error")
+	@Test("Decode JSON strings without an integer part", arguments: [
+		(".5", 5, 1),
+		("+.5", 5, 1),
+		("-.5", -5, 1),
+		(",5", 5, 1),
+		(".3400", 3400, 4),
+		("  -.5E-2  ", -5, 3)
+	])
+	func decodeStringWithoutIntegerPart(source: String, expectedUnits: Int, expectedScale: Int) throws {
+		let value: Decimals = try decode(String(reflecting: source))
+		#expect(value.units == expectedUnits)
+		#expect(value.scale == expectedScale)
 	}
 
 	/// Decoding from a JSON **number** must use the precise Decimal path.
