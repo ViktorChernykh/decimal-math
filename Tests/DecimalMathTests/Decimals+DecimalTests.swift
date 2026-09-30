@@ -5,10 +5,10 @@ import Testing
 struct DecimalsDecimalInitTests {
 
 	@Test
-	func initFromDecimal_usesNaturalScale_simpleFraction() {
+	func initFromDecimal_usesNaturalScale_simpleFraction() throws {
 		// 5.12 → (512, 2)
 		let decimal: Decimal = Decimal(string: "5.12")!
-		let value: Decimals = .init(decimal: decimal)
+		let value: Decimals = try #require(Decimals(decimal: decimal))
 
 		#expect(value.units == 512)
 		#expect(value.scale == 2)
@@ -16,11 +16,11 @@ struct DecimalsDecimalInitTests {
 	}
 
 	@Test
-	func initFromDecimal_usesNaturalScale_integerWithPositiveExponent() {
+	func initFromDecimal_usesNaturalScale_integerWithPositiveExponent() throws {
 		// Construct Decimal with mantissa=12, exponent=2 → 12 * 10^2 = 1200
 		let decimal: Decimal = Decimal(string: "1200")!
 
-		let value: Decimals = .init(decimal: decimal)
+		let value: Decimals = try #require(Decimals(decimal: decimal))
 
 		// Natural scale is 0, full mantissa is 1200
 		#expect(value.scale == 0)
@@ -29,11 +29,11 @@ struct DecimalsDecimalInitTests {
 	}
 
 	@Test
-	func initFromDecimal_usesScale_integerWithPositiveExponent() {
+	func initFromDecimal_usesScale_integerWithPositiveExponent() throws {
 		// Construct Decimal with mantissa=12, exponent=2 → 12 * 10^2 = 1200
 		let decimal: Decimal = Decimal(string: "1200")!
 
-		let value: Decimals = .init(decimal: decimal, scale: 2)
+		let value: Decimals = try #require(Decimals(decimal: decimal, scale: 2))
 
 		// Natural scale is 0, full mantissa is 1200
 		#expect(value.scale == 2)
@@ -42,10 +42,10 @@ struct DecimalsDecimalInitTests {
 	}
 
 	@Test
-	func initFromDecimal_preservesSign() {
+	func initFromDecimal_preservesSign() throws {
 		// -7.50 → (-750, 2)
 		let decimal: Decimal = Decimal(string: "-7.50")!
-		let value: Decimals = .init(decimal: decimal)
+		let value: Decimals = try #require(Decimals(decimal: decimal))
 
 		#expect(value.scale == 1)
 		#expect(value.units == -75)
@@ -53,11 +53,11 @@ struct DecimalsDecimalInitTests {
 	}
 
 	@Test
-	func initFromDecimal_withTargetScale_higherThanNatural() {
+	func initFromDecimal_withTargetScale_higherThanNatural() throws {
 		// 5.12 → natural: (512, 2)
 		// targetScale = 4 → (51200, 4), numeric value must stay 5.12
 		let decimal: Decimal = Decimal(string: "5.12")!
-		let value: Decimals = .init(decimal: decimal, scale: 4)
+		let value: Decimals = try #require(Decimals(decimal: decimal, scale: 4))
 
 		#expect(value.scale == 4)
 		#expect(value.units == 51200)
@@ -65,10 +65,10 @@ struct DecimalsDecimalInitTests {
 	}
 
 	@Test
-	func initFromDecimal_withTargetScale_equalToNatural() {
+	func initFromDecimal_withTargetScale_equalToNatural() throws {
 		// targetScale == naturalScale → no rescale
 		let decimal: Decimal = Decimal(string: "123.45")!
-		let value: Decimals = .init(decimal: decimal, scale: 2)
+		let value: Decimals = try #require(Decimals(decimal: decimal, scale: 2))
 
 		#expect(value.scale == 2)
 		#expect(value.units == 12345)
@@ -89,7 +89,7 @@ struct DecimalsDecimalInitTests {
 		expectedScale: Int
 	) throws {
 		let decimal: Decimal = try #require(Decimal(string: source))
-		let value: Decimals = .init(decimal: decimal)
+		let value: Decimals = try #require(Decimals(decimal: decimal))
 
 		#expect(value.units == expectedUnits)
 		#expect(value.scale == expectedScale)
@@ -107,7 +107,7 @@ struct DecimalsDecimalInitTests {
 	)
 	func initFromDecimal_downscalesWithBankersRounding(_ source: String, expectedUnits: Int) throws {
 		let decimal: Decimal = try #require(Decimal(string: source))
-		let value: Decimals = .init(decimal: decimal, scale: 2)
+		let value: Decimals = try #require(Decimals(decimal: decimal, scale: 2))
 
 		#expect(value.units == expectedUnits)
 		#expect(value.scale == 2)

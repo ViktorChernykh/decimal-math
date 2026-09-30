@@ -73,4 +73,34 @@ extension Int {
 			return Decimals.roundHalfToEven(quotient: q, remainder: r, divisor: multiplier)
 		}
 	}
+
+	/// Multiplies or divides the integer by 10^`scale`, like `pow10(_:)`, but returns `nil`
+	/// instead of stopping the process. It is for values that come from outside.
+	///
+	/// - Parameter scale: Signed scale delta. `scale > 0` multiplies; `scale < 0` divides with
+	///   banker's rounding; `scale == 0` returns `self`.
+	/// - Returns: The rescaled integer, or `nil` when |`scale`| is above 18 or the
+	///   multiplication overflows.
+	@inline(__always)
+	func pow10Checked(_ scale: Int) -> Int? {
+		if scale == 0 {
+			return self
+		}
+		let index: Int = scale >= 0 ? scale : -scale
+		guard index < Int.p10.count else {
+			return nil
+		}
+		let multiplier: Int = Int.p10[index]
+
+		if scale > 0 {
+			let (result, overflow): (Int, Bool) = self.multipliedReportingOverflow(by: multiplier)
+			return overflow ? nil : result
+		}
+		// A division by 10^k > 0 cannot overflow.
+		return Decimals.roundHalfToEven(
+			quotient: self / multiplier,
+			remainder: self % multiplier,
+			divisor: multiplier
+		)
+	}
 }

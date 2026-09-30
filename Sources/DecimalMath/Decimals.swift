@@ -49,6 +49,9 @@ public struct Decimals: Codable, Sendable, CustomStringConvertible {
 
 	public static let zero: Decimals = .init(units: 0, scale: 0)
 
+	/// The largest |scale| the type supports: `Int.p10` holds powers up to 10^18.
+	static let maxScale: Int = 18
+
 	public let units: Int
 	public let scale: Int
 
@@ -152,14 +155,22 @@ public struct Decimals: Codable, Sendable, CustomStringConvertible {
 		self.scale = scale
 	}
 
+	/// Parses a decimal text such as "123.45", "-1.2e3" or ".5".
+	///
+	/// - Parameter string: ASCII text without spaces around it.
+	/// - Returns: `nil` when the text is not a number or the value does not fit: `units`
+	///   outside `-Int.max...Int.max` or a scale above 18. Zero always fits.
 	@inline(__always)
 	public init?(from string: String) {
-		if let parsed: (units: Int, scale: Int) = Decimals.parseStringToUnitsScale(string) {
-			units = parsed.units
-			scale = parsed.scale
-			return
+		guard let parsed: (units: Int, scale: Int) = Decimals.parseStringToUnitsScale(string),
+			let value: Decimals = Decimals.fitted(
+				mantissa: parsed.units,
+				naturalScale: parsed.scale,
+				targetScale: nil
+			) else {
+			return nil
 		}
-		return nil
+		self = value
 	}
 
 	/// Converts a Double to fixed-point `Decimals` using banker's rounding.
@@ -192,61 +203,27 @@ public struct Decimals: Codable, Sendable, CustomStringConvertible {
 		self.scale = scale
 	}
 
-	/// Converts Decimal → (units, scale)
-	/// Example: 5.12 → (512, 2)
+	/// Converts `Decimal` to `(units, scale)`.
+	/// Example: 5.12 → (512, 2).
+	///
+	/// - Parameters:
+	///   - decimal: The source value.
+	///   - targetScale: The scale of the result, -18...18. The value is rounded to it half to
+	///     even. `nil` keeps the scale of the value itself.
+	/// - Returns: `nil` when the value does not fit: NaN, a mantissa outside
+	///   `-Int.max...Int.max`, a scale above 18 without a target, a target outside -18...18,
+	///   a shift to the target above 18 or an overflow on it. Zero always fits.
 	@inline(__always)
-	public init(decimal: Decimal, scale targetScale: Int? = nil) {
-#if os(Linux)
-		// swift-corelibs-foundation keeps Decimal's storage fields internal.
-		// Decimal.description is locale-independent and uses a dot separator, so reuse
-		// the same exact ASCII parser used by the string and Codable initializers.
-		guard let parsed: (units: Int, scale: Int) = Decimals.parseStringToUnitsScale(decimal.description) else {
-			preconditionFailure("Decimal must be finite and fit into Int-backed Decimals")
+	public init?(decimal: Decimal, scale targetScale: Int? = nil) {
+		guard let parts: (mantissa: Int, scale: Int) = Decimals.parts(of: decimal),
+			let value: Decimals = Decimals.fitted(
+				mantissa: parts.mantissa,
+				naturalScale: parts.scale,
+				targetScale: targetScale
+			) else {
+			return nil
 		}
-		let mantissa: Int = parsed.units
-		let naturalScale: Int = parsed.scale
-#else
-		let length: Int = Int(decimal._length)
-		// Decimals is backed by Int (64-bit), so we can only safely consume up to 4 words (64 bits).
-		precondition(length <= 4, "Decimal magnitude does not fit into Int-backed Decimals")
-
-		// "Native" scale for Decimal: number of fractional digits.
-		let rawExponent: Int = Int(decimal._exponent)
-		let naturalScale: Int = rawExponent < 0 ? -rawExponent : 0
-
-		// Collect integer mantissa from internal Decimal words (little-endian 16-bit chunks).
-		let words = decimal._mantissa
-		let parts: [UInt16] = [words.0, words.1, words.2, words.3]
-
-		var mantissa: Int = 0
-		for index in 0..<length {
-			mantissa &+= Int(parts[index]) << (index * 16)
-		}
-
-		// If exponent > 0 the number has trailing decimal zeros
-		// that are not stored in the mantissa – add them back.
-		if rawExponent > 0 {
-			let factor: Int = Int.pow10(scale: rawExponent)
-			mantissa &*= factor
-		}
-		// Restore sign.
-		if decimal.isSignMinus {
-			mantissa = -mantissa
-		}
-#endif
-
-		if let targetScale {
-			scale = targetScale
-
-			if targetScale != naturalScale {
-				units = mantissa.pow10(targetScale - naturalScale)
-			} else {
-				units = mantissa
-			}
-		} else {
-			units = mantissa
-			scale = naturalScale
-		}
+		self = value
 	}
 
 	/// Decodes from JSON number or string:
@@ -255,18 +232,25 @@ public struct Decimals: Codable, Sendable, CustomStringConvertible {
 	/// - If value is a String     → parse with en_US_POSIX locale, then map
 	/// Double is not used as a separate path intentionally,
 	/// so as not to pick up unnecessary artifacts of binary representation.
+	///
+	/// A value from outside never stops the process. A value that does not fit gives an error
+	/// with the path of the field (ADR bcs-json-parser/0001).
+	///
+	/// - Parameter decoder: The decoder. `userInfo[.scale]` sets the scale of a JSON number.
+	/// - Throws: `DecodingError.dataCorrupted` when the value is not a number or does not fit;
+	///   `DecodingError.keyNotFound` when the object form misses a key.
 	@inline(__always)
 	public init(from decoder: any Decoder) throws {
 		let container: any SingleValueDecodingContainer = try decoder.singleValueContainer()
 
 		// Decimal
 		if let decimal: Decimal = try? container.decode(Decimal.self) {
-			// scale is set externally – use init(from:scale:)
-			if let targetScale: Int = decoder.userInfo[.scale] as? Int {
-				self = Decimals(decimal: decimal, scale: targetScale)
-			} else {
-				self = Decimals(decimal: decimal)
+			// The caller of the decoder may set the scale of the result.
+			let targetScale: Int? = decoder.userInfo[.scale] as? Int
+			guard let value: Decimals = Decimals(decimal: decimal, scale: targetScale) else {
+				throw Decimals.doesNotFit(in: container)
 			}
+			self = value
 			return
 		} else
 
@@ -275,8 +259,14 @@ public struct Decimals: Codable, Sendable, CustomStringConvertible {
 			let trimmed: String = dec.value.trimmingCharacters(in: .whitespacesAndNewlines)
 
 			if let parsed: (units: Int, scale: Int) = Decimals.parseStringToUnitsScale(trimmed) {
-				self.units = parsed.units
-				self.scale = parsed.scale
+				guard let value: Decimals = Decimals.fitted(
+					mantissa: parsed.units,
+					naturalScale: parsed.scale,
+					targetScale: nil
+				) else {
+					throw Decimals.doesNotFit(in: container)
+				}
+				self = value
 				return
 			}
 		} else
@@ -286,16 +276,48 @@ public struct Decimals: Codable, Sendable, CustomStringConvertible {
 			let trimmed: String = raw.trimmingCharacters(in: .whitespacesAndNewlines)
 
 			if let parsed: (units: Int, scale: Int) = Decimals.parseStringToUnitsScale(trimmed) {
-				self.units = parsed.units
-				self.scale = parsed.scale
+				guard let value: Decimals = Decimals.fitted(
+					mantissa: parsed.units,
+					naturalScale: parsed.scale,
+					targetScale: nil
+				) else {
+					throw Decimals.doesNotFit(in: container)
+				}
+				self = value
 				return
 			}
 		} else
 
 		// Object form: {"units":1,"scale":2}
 		if let keyed: KeyedDecodingContainer<CodingKeys> = try? decoder.container(keyedBy: CodingKeys.self) {
-			self.units = try keyed.decode(Int.self, forKey: .units)
-			self.scale = try keyed.decode(Int.self, forKey: .scale)
+			let units: Int = try Decimals.decodeField(.units, in: keyed)
+			let scale: Int = try Decimals.decodeField(.scale, in: keyed)
+
+			// Int.min has no positive twin: abs, format and decimal break on it.
+			guard units != .min else {
+				throw DecodingError.dataCorruptedError(
+					forKey: .units,
+					in: keyed,
+					debugDescription: "Units must not be Int.min"
+				)
+			}
+			guard scale >= -Decimals.maxScale, scale <= Decimals.maxScale else {
+				throw DecodingError.dataCorruptedError(
+					forKey: .scale,
+					in: keyed,
+					debugDescription: "Scale must be in -18...18"
+				)
+			}
+			// With a negative scale, description writes units * 10^|scale| as Int.
+			if scale < 0, units.multipliedReportingOverflow(by: Int.p10[-scale]).overflow {
+				throw DecodingError.dataCorruptedError(
+					forKey: .units,
+					in: keyed,
+					debugDescription: "Units * 10^|scale| does not fit into Int"
+				)
+			}
+			self.units = units
+			self.scale = scale
 			return
 		}
 		throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected decimal number")
@@ -662,6 +684,165 @@ public struct Decimals: Codable, Sendable, CustomStringConvertible {
 		return max(1, count)
 	}
 
+	// MARK: - Values from outside
+
+	/// Reads the integer mantissa and the natural scale of a `Decimal` on this platform.
+	///
+	/// - Parameter decimal: The source value.
+	/// - Returns: The mantissa and the natural scale (zero or more), or `nil` for NaN and for a
+	///   mantissa outside `-Int.max...Int.max`.
+	@inline(__always)
+	static func parts(of decimal: Decimal) -> (mantissa: Int, scale: Int)? {
+#if os(Linux)
+		return textParts(of: decimal)
+#else
+		return storedParts(of: decimal)
+#endif
+	}
+
+	/// Reads the mantissa and the natural scale from `Decimal.description`.
+	///
+	/// Linux uses it: swift-corelibs-foundation keeps the storage fields of `Decimal` internal.
+	/// The description is locale-independent, has a dot and no exponent. The function is built
+	/// on every platform, so the tests on macOS can check the way Linux goes.
+	///
+	/// - Parameter decimal: The source value.
+	/// - Returns: The mantissa and the natural scale, or `nil` for NaN (its description is
+	///   "NaN") and for a mantissa outside `-Int.max...Int.max`.
+	static func textParts(of decimal: Decimal) -> (mantissa: Int, scale: Int)? {
+		let text: String = decimal.description
+		guard let parsed: (units: Int, scale: Int) = parseStringToUnitsScale(text) else {
+			return nil
+		}
+		return (parsed.units, parsed.scale)
+	}
+
+#if !os(Linux)
+	/// Reads the mantissa and the natural scale from the storage fields of `Decimal`.
+	///
+	/// - Parameter decimal: The source value.
+	/// - Returns: The mantissa and the natural scale, or `nil` for NaN, for a mantissa outside
+	///   `-Int.max...Int.max` and for a positive exponent that does not fit.
+	static func storedParts(of decimal: Decimal) -> (mantissa: Int, scale: Int)? {
+		// NaN has length 0, so the code below would read it as zero.
+		guard decimal.isFinite else {
+			return nil
+		}
+		// Four 16-bit words are 64 bits. A longer mantissa does not fit into Int.
+		let length: Int = Int(decimal._length)
+		guard length <= 4 else {
+			return nil
+		}
+		// Collect the magnitude from the little-endian 16-bit words.
+		let chunks: [UInt16] = [
+			decimal._mantissa.0, decimal._mantissa.1, decimal._mantissa.2, decimal._mantissa.3,
+		]
+		var magnitude: UInt64 = 0
+		for index in 0..<length {
+			magnitude |= UInt64(chunks[index]) << UInt64(index * 16)
+		}
+		// The magnitude stops at Int.max, so Int.min never comes out.
+		guard magnitude <= UInt64(Int.max) else {
+			return nil
+		}
+		var mantissa: Int = Int(magnitude)
+		let exponent: Int = Int(decimal._exponent)
+		var naturalScale: Int = 0
+
+		if exponent < 0 {
+			naturalScale = -exponent
+		} else if exponent > 0, mantissa != 0 {
+			// A positive exponent means trailing zeros that the mantissa does not keep.
+			guard exponent <= maxScale else {
+				return nil
+			}
+			let (product, overflow): (Int, Bool) = mantissa.multipliedReportingOverflow(
+				by: Int.p10[exponent]
+			)
+			guard !overflow else {
+				return nil
+			}
+			mantissa = product
+		}
+		if decimal.isSignMinus {
+			mantissa = -mantissa
+		}
+		return (mantissa, naturalScale)
+	}
+#endif
+
+	/// Applies the rules for a value from outside to a mantissa and its natural scale.
+	///
+	/// Zero always fits. With a target scale the value is rounded to it half to even.
+	///
+	/// - Parameters:
+	///   - mantissa: Integer mantissa in `-Int.max...Int.max`.
+	///   - naturalScale: Number of fractional digits of the mantissa, zero or more.
+	///   - target: The scale of the result, or `nil` to keep the natural scale.
+	/// - Returns: The value, or `nil` when it does not fit.
+	static func fitted(mantissa: Int, naturalScale: Int, targetScale target: Int?) -> Decimals? {
+		if let target, (target < -maxScale || target > maxScale) {
+			return nil
+		}
+		if mantissa == 0 {
+			// Zero has no digits to lose, so any exponent gives zero.
+			let scale: Int = target ?? (naturalScale <= maxScale ? naturalScale : 0)
+			return Decimals(units: 0, scale: scale)
+		}
+		guard let target else {
+			guard naturalScale <= maxScale else {
+				return nil
+			}
+			return Decimals(units: mantissa, scale: naturalScale)
+		}
+		// The exponent of a Decimal is -128...127, so the difference cannot overflow.
+		guard let units: Int = mantissa.pow10Checked(target - naturalScale) else {
+			return nil
+		}
+		return Decimals(units: units, scale: target)
+	}
+
+	/// Makes the error for a number that is valid but does not fit into `Decimals`.
+	///
+	/// - Parameter container: The container of the value; its path goes into the error.
+	/// - Returns: `DecodingError.dataCorrupted` with the path of the field.
+	private static func doesNotFit(
+		in container: any SingleValueDecodingContainer
+	) -> DecodingError {
+		return DecodingError.dataCorruptedError(
+			in: container,
+			debugDescription: "Number does not fit into Decimals"
+		)
+	}
+
+	/// Reads one integer field of the object form.
+	///
+	/// A missing key stays `keyNotFound`. Any other error becomes `dataCorrupted` with the key
+	/// in its path: Foundation gives such an error without the path, and on Linux without
+	/// the reason.
+	///
+	/// - Parameters:
+	///   - key: The field to read.
+	///   - keyed: The container of the object.
+	/// - Returns: The value of the field.
+	/// - Throws: `DecodingError.keyNotFound` or `DecodingError.dataCorrupted`.
+	private static func decodeField(
+		_ key: CodingKeys,
+		in keyed: KeyedDecodingContainer<CodingKeys>
+	) throws -> Int {
+		do {
+			return try keyed.decode(Int.self, forKey: key)
+		} catch DecodingError.keyNotFound(let missing, let context) {
+			throw DecodingError.keyNotFound(missing, context)
+		} catch {
+			throw DecodingError.dataCorruptedError(
+				forKey: key,
+				in: keyed,
+				debugDescription: "Expected an integer that fits into Int"
+			)
+		}
+	}
+
 	/// Parses ASCII decimal string into `(units, scale)` pair.
 	///
 	/// Accepted forms: optional sign ('+' or '-'), decimal mantissa, optional exponent 'e' or 'E'.
@@ -804,6 +985,13 @@ public struct Decimals: Codable, Sendable, CustomStringConvertible {
 				// shift decimal point to the right by 'exp'
 				if exp >= scale {
 					let shift: Int = exp - scale
+					// A shift above 18 fits only for zero: any other mantissa overflows.
+					if shift > maxScale {
+						if units != 0 {
+							return nil
+						}
+						return (0, 0)
+					}
 					let mul: Int = Int.pow10(scale: shift)
 					let (res, of) = units.multipliedReportingOverflow(by: mul)
 					if of { return nil }
